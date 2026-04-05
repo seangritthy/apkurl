@@ -121,7 +121,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val labels = appItems.map { "${it.label} (${it.packageName})" }.toTypedArray()
+        val labelCounts = appItems
+            .groupingBy { it.label.lowercase(Locale.getDefault()) }
+            .eachCount()
+        val labels = appItems.map { item ->
+            val count = labelCounts[item.label.lowercase(Locale.getDefault())] ?: 0
+            if (count > 1) "${item.label} (${item.packageName})" else item.label
+        }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle(R.string.pick_app_title)
@@ -129,7 +135,7 @@ class MainActivity : AppCompatActivity() {
                 val selected = appItems[which]
                 prefs.edit().putString(KEY_SELECTED_PACKAGE, selected.packageName).apply()
                 updateSelectedAppLabel()
-                statusText.text = getString(R.string.status_app_selected, selected.packageName)
+                statusText.text = getString(R.string.status_app_selected, selected.label)
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -231,7 +237,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().remove(KEY_SELECTED_PACKAGE).apply()
             getString(R.string.selected_app_none)
         } else {
-            getString(R.string.selected_app_value, "${appItem.label} (${appItem.packageName})")
+            getString(R.string.selected_app_value, appItem.label)
         }
     }
 
@@ -242,11 +248,34 @@ class MainActivity : AppCompatActivity() {
 
         return try {
             val appInfo = packageManager.getApplicationInfo(packageName, 0)
-            val label = packageManager.getApplicationLabel(appInfo).toString().ifBlank { packageName }
+            val appLabel = packageManager.getApplicationLabel(appInfo).toString().trim()
+            val launchLabel = packageManager.getLaunchIntentForPackage(packageName)
+                ?.let { packageManager.resolveActivity(it, 0) }
+                ?.loadLabel(packageManager)
+                ?.toString()
+                ?.trim()
+                .orEmpty()
+
+            val label = when {
+                appLabel.isNotBlank() && !looksLikePackageName(appLabel) -> appLabel
+                launchLabel.isNotBlank() && !looksLikePackageName(launchLabel) -> launchLabel
+                appLabel.isNotBlank() -> appLabel
+                launchLabel.isNotBlank() -> launchLabel
+                else -> fallbackNameFromPackage(packageName)
+            }
             AppItem(label, packageName)
         } catch (_: PackageManager.NameNotFoundException) {
             null
         }
+    }
+
+    private fun looksLikePackageName(text: String): Boolean {
+        return text.contains('.') && text.none { it == ' ' }
+    }
+
+    private fun fallbackNameFromPackage(packageName: String): String {
+        val tail = packageName.substringAfterLast('.', packageName)
+        return tail.replace('_', ' ').replace('-', ' ').ifBlank { packageName }
     }
 
     private fun isRealLaunchableApp(packageName: String): Boolean {
