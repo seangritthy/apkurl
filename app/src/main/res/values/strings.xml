@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">APK URL Extractor</string>
+    <string name="pick_app">Pick app to monitor</string>
+    <string name="launch_selected_app">Open selected app</string>
+    <string name="start_capture">Start capture</string>
+    <string name="stop_capture">Stop capture</string>
+    <string name="clear_logs">Clear logs</string>
+    <string name="check_updates">Check for updates</string>
+    <string name="log_title">Captured URLs</string>
+    <string name="selected_app_none">Selected app: none</string>
+    <string name="selected_app_value">Selected app: %1$s</string>
+    <string name="status_idle">Status: idle</string>
+    <string name="status_app_selected">Selected %1$s</string>
+    <string name="status_capture_started">Capture started for %1$s</string>
+    <string name="status_capture_stopped">Capture stopped</string>
+    <string name="status_vpn_denied">VPN permission denied</string>
+    <string name="status_logs_cleared">Logs cleared</string>
+    <string name="status_checking_updates">Checking for updates...</string>
+    <string name="status_update_check_failed">Update check failed</string>
+    <string name="status_update_available">Update available: %1$s</string>
+    <string name="status_already_latest">Already on latest version</string>
+    <string name="no_logs">No URLs captured yet.</string>
+    <string name="pick_app_title">Choose target app</string>
+    <string name="no_apps_found">No launchable apps found.</string>
+    <string name="pick_app_first">Pick an app first.</string>
+    <string name="cannot_launch_app">Cannot open selected app.</string>
+    <string name="notification_title">URL capture is running</string>
+    <string name="notification_text">Monitoring package: %1$s</string>
+</resources>
