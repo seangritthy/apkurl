@@ -111,11 +111,9 @@ class MainActivity : AppCompatActivity() {
         val activities = packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL)
 
         val appItems = activities
-            .map {
-                val label = it.loadLabel(packageManager)?.toString().orEmpty().ifBlank { it.activityInfo.packageName }
-                AppItem(label, it.activityInfo.packageName)
-            }
-            .distinctBy { it.packageName }
+            .map { it.activityInfo.packageName }
+            .distinct()
+            .mapNotNull { buildAppItem(it) }
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
 
         if (appItems.isEmpty()) {
@@ -144,6 +142,13 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        if (!isRealLaunchableApp(packageName)) {
+            prefs.edit().remove(KEY_SELECTED_PACKAGE).apply()
+            updateSelectedAppLabel()
+            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
         if (launchIntent == null) {
             Toast.makeText(this, R.string.cannot_launch_app, Toast.LENGTH_SHORT).show()
@@ -156,6 +161,13 @@ class MainActivity : AppCompatActivity() {
     private fun requestVpnAndStart() {
         val packageName = prefs.getString(KEY_SELECTED_PACKAGE, null)
         if (packageName.isNullOrBlank()) {
+            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!isRealLaunchableApp(packageName)) {
+            prefs.edit().remove(KEY_SELECTED_PACKAGE).apply()
+            updateSelectedAppLabel()
             Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show()
             return
         }
@@ -209,10 +221,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateSelectedAppLabel() {
         val packageName = prefs.getString(KEY_SELECTED_PACKAGE, null)
-        selectedAppText.text = if (packageName.isNullOrBlank()) {
+        if (packageName.isNullOrBlank()) {
+            selectedAppText.text = getString(R.string.selected_app_none)
+            return
+        }
+
+        val appItem = buildAppItem(packageName)
+        selectedAppText.text = if (appItem == null) {
+            prefs.edit().remove(KEY_SELECTED_PACKAGE).apply()
             getString(R.string.selected_app_none)
         } else {
-            getString(R.string.selected_app_value, packageName)
+            getString(R.string.selected_app_value, "${appItem.label} (${appItem.packageName})")
+        }
+    }
+
+    private fun buildAppItem(packageName: String): AppItem? {
+        if (!isRealLaunchableApp(packageName)) {
+            return null
+        }
+
+        return try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            val label = packageManager.getApplicationLabel(appInfo).toString().ifBlank { packageName }
+            AppItem(label, packageName)
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
+
+    private fun isRealLaunchableApp(packageName: String): Boolean {
+        if (packageName == this.packageName) {
+            return false
+        }
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+
+        return try {
+            val appInfo = packageManager.getApplicationInfo(packageName, 0)
+            appInfo.enabled && launchIntent.component != null
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
         }
     }
 
