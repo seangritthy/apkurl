@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -14,17 +13,17 @@ import java.net.URL
 
 object UpdateChecker {
 
-    private const val GITHUB_REPO = "seang/apkurl"
-    private const val RELEASES_API_URL = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
     private const val TIMEOUT_MS = 10000
 
-    suspend fun checkForUpdates(context: Context): UpdateInfo? = withContext(Dispatchers.IO) {
+    suspend fun checkForUpdates(): UpdateInfo? = withContext(Dispatchers.IO) {
         try {
-            val connection = URL(RELEASES_API_URL).openConnection() as HttpURLConnection
+            val releasesApiUrl = "https://api.github.com/repos/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases/latest"
+            val connection = URL(releasesApiUrl).openConnection() as HttpURLConnection
             connection.connectTimeout = TIMEOUT_MS
             connection.readTimeout = TIMEOUT_MS
             connection.requestMethod = "GET"
             connection.setRequestProperty("Accept", "application/vnd.github.v3+json")
+            connection.setRequestProperty("User-Agent", "apkurl-android")
             connection.connect()
 
             if (connection.responseCode != 200) {
@@ -35,9 +34,11 @@ object UpdateChecker {
             val json = JSONObject(response)
 
             val tagName = json.getString("tag_name")
-            val downloadUrl = json.getJSONArray("assets")
-                .getJSONObject(0)
-                .getString("browser_download_url")
+            val assets = json.optJSONArray("assets")
+            val downloadUrl = findBestDownloadUrl(assets) ?: json.optString("html_url", "")
+            if (downloadUrl.isBlank()) {
+                return@withContext null
+            }
             val releaseNotes = json.optString("body", "No release notes available")
 
             UpdateInfo(
@@ -46,9 +47,34 @@ object UpdateChecker {
                 releaseNotes = releaseNotes,
                 publishedAt = json.getString("published_at")
             )
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
+    }
+
+    private fun findBestDownloadUrl(assets: org.json.JSONArray?): String? {
+        if (assets == null || assets.length() == 0) {
+            return null
+        }
+
+        var fallback: String? = null
+        for (i in 0 until assets.length()) {
+            val asset = assets.optJSONObject(i) ?: continue
+            val url = asset.optString("browser_download_url", "")
+            if (url.isBlank()) {
+                continue
+            }
+
+            if (url.endsWith(".apk", ignoreCase = true)) {
+                return url
+            }
+
+            if (fallback == null) {
+                fallback = url
+            }
+        }
+
+        return fallback
     }
 
     fun isUpdateAvailable(context: Context, latestVersion: String): Boolean {
@@ -58,7 +84,7 @@ object UpdateChecker {
                 .versionName ?: "0.0.0"
 
             return compareVersions(latestVersion, currentVersion) > 0
-        } catch (e: PackageManager.NameNotFoundException) {
+        } catch (_: PackageManager.NameNotFoundException) {
             return false
         }
     }

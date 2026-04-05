@@ -10,20 +10,11 @@
 6. **Do NOT** initialize with README (we have one already).
 7. Click **Create repository**.
 
-## Step 2: Initialize git and push code
+## Step 2: Push existing local repository
 
 From PowerShell in `C:\Users\seang\AndroidStudioProjects\apkurl`:
 
 ```powershell
-# Initialize git repo locally
-git init
-
-# Add all files
-git add .
-
-# Initial commit
-git commit -m "Initial commit: APK URL Extractor app with update checking"
-
 # Add remote (replace USERNAME with your GitHub username)
 git remote add origin https://github.com/USERNAME/apkurl.git
 
@@ -50,9 +41,15 @@ The GitHub Actions workflow (`.github/workflows/release.yml`) will automatically
 
 Once the first release is created, the app's **Check for updates** button will work and point users to your GitHub releases page.
 
+Before publishing, confirm update-check target in `app/build.gradle.kts`:
+
+- `GITHUB_OWNER` should be your GitHub username/org
+- `GITHUB_REPO` should be `apkurl`
+
 ## Notes
 
 - Update checking looks for releases at: `https://api.github.com/repos/USERNAME/apkurl/releases/latest`
 - Make sure your GitHub repository is **public** for the update API to be accessible.
 - GitHub Actions is free for public repositories.
+
 

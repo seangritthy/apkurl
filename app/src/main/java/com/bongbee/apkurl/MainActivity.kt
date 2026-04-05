@@ -91,7 +91,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             statusText.text = getString(R.string.status_checking_updates)
 
-            val updateInfo = UpdateChecker.checkForUpdates(this@MainActivity)
+            val updateInfo = UpdateChecker.checkForUpdates()
             if (updateInfo == null) {
                 statusText.text = getString(R.string.status_update_check_failed)
                 return@launch

@@ -49,10 +49,23 @@ Set-Location "C:\Users\seang\AndroidStudioProjects\apkurl"
 
 This project uses GitHub Actions to automatically build and release APKs when you push a git tag. The app also includes built-in update checking that fetches the latest release from GitHub API.
 
+Update checks are configured through `BuildConfig` in `app/build.gradle.kts`:
+
+- `GITHUB_OWNER` (default: `seang`)
+- `GITHUB_REPO` (default: `apkurl`)
+
+Set these to your real GitHub owner/repo before publishing.
+
 ### How to release:
 
 1. Ensure all changes are committed.
-2. Create and push a git tag (e.g., `git tag v1.1` && `git push origin v1.1`).
+2. Create and push a git tag.
+
+```powershell
+git tag v1.1.0
+git push origin v1.1.0
+```
+
 3. GitHub Actions workflow automatically builds and creates a release with the APK.
 4. Users can tap **Check for updates** in the app to download the new version.
 
