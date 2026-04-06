@@ -1,3 +1,4 @@
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -21,8 +22,8 @@ android {
         applicationId = "com.bongbee.apkurl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.1.3"
+        versionCode = 6
+        versionName = "1.1.4"
         buildConfigField("String", "GITHUB_OWNER", "\"seangritthy\"")
         buildConfigField("String", "GITHUB_REPO", "\"apkurl\"")
 
@@ -31,10 +32,27 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(System.getenv("STORE_FILE") ?: keystoreProps.getProperty("STORE_FILE") ?: "indra.jks")
-            storePassword = System.getenv("STORE_PASSWORD") ?: keystoreProps.getProperty("STORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: keystoreProps.getProperty("KEY_ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: keystoreProps.getProperty("KEY_PASSWORD") ?: ""
+            // Prefer local indra.jks; fall back to decoding the committed base64 copy (used in CI)
+            val resolvedKeystoreFile: File = run {
+                val localFile = file(System.getenv("STORE_FILE") ?: keystoreProps.getProperty("STORE_FILE") ?: "indra.jks")
+                if (localFile.exists()) {
+                    localFile
+                } else {
+                    val b64File = file("indra.jks.b64")
+                    val decoded = file("${layout.buildDirectory.get()}/ci_keystore.jks")
+                    if (b64File.exists()) {
+                        decoded.parentFile.mkdirs()
+                        decoded.writeBytes(Base64.getDecoder().decode(b64File.readText().trim()))
+                        decoded
+                    } else {
+                        localFile // will fail at signing time if neither exists
+                    }
+                }
+            }
+            storeFile = resolvedKeystoreFile
+            storePassword = System.getenv("STORE_PASSWORD") ?: keystoreProps.getProperty("STORE_PASSWORD") ?: "indra2026"
+            keyAlias = System.getenv("KEY_ALIAS") ?: keystoreProps.getProperty("KEY_ALIAS") ?: "indra"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: keystoreProps.getProperty("KEY_PASSWORD") ?: "indra2026"
         }
     }
 
