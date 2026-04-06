@@ -22,7 +22,9 @@
     <string name="status_update_available">Update available: %1$s</string>
     <string name="status_already_latest">Already on latest version</string>
     <string name="status_downloading_update">Downloading update…</string>
+    <string name="status_downloading_progress">Downloading update… %1$d%%</string>
     <string name="status_download_failed">Update download failed</string>
+    <string name="status_installing_update">Opening installer…</string>
     <string name="status_install_prompt_opened">Installer opened. Confirm update to finish.</string>
     <string name="status_install_prompt_failed">Cannot open installer</string>
     <string name="no_logs">No URLs captured yet.</string>

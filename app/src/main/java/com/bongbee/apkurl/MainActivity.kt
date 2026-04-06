@@ -162,16 +162,24 @@ class MainActivity : AppCompatActivity() {
                     statusText.text = getString(R.string.status_downloading_update)
                     checkUpdatesButton.isEnabled = false
 
-                    val apkFile = withContext(Dispatchers.IO) {
-                        UpdateChecker.downloadUpdateApk(this@MainActivity, updateInfo)
+                    val apkFile = UpdateChecker.downloadUpdateApk(this@MainActivity, updateInfo) { downloaded, total ->
+                        val pct = if (total > 0) (downloaded * 100 / total) else -1L
+                        runOnUiThread {
+                            statusText.text = if (pct >= 0)
+                                getString(R.string.status_downloading_progress, pct)
+                            else
+                                getString(R.string.status_downloading_update)
+                        }
                     }
+
                     if (apkFile == null) {
-                        statusText.text = getString(R.string.status_update_check_failed)
+                        statusText.text = getString(R.string.status_download_failed)
                         Toast.makeText(this@MainActivity, R.string.status_download_failed, Toast.LENGTH_SHORT).show()
                         checkUpdatesButton.isEnabled = true
                         return@launch
                     }
 
+                    statusText.text = getString(R.string.status_installing_update)
                     val launched = UpdateChecker.launchInAppInstaller(this@MainActivity, apkFile)
                     statusText.text = if (launched) {
                         getString(R.string.status_install_prompt_opened)
