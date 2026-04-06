@@ -27,8 +27,6 @@ class SettingsActivity : AppCompatActivity() {
 
         // ── Language toggle ──
         val toggleGroup = findViewById<MaterialButtonToggleGroup>(R.id.langToggleGroup)
-        val enBtn = findViewById<MaterialButton>(R.id.langEnBtn)
-        val khBtn = findViewById<MaterialButton>(R.id.langKhBtn)
 
         toggleGroup.check(if (isKhmer) R.id.langKhBtn else R.id.langEnBtn)
 

@@ -77,7 +77,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="🌐  English" />
+                            android:text="@string/overlay_lang_en" />
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/langKhBtn"
@@ -85,7 +85,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="🌐  ខ្មែរ" />
+                            android:text="@string/overlay_lang_kh" />
 
                     </com.google.android.material.button.MaterialButtonToggleGroup>
 
