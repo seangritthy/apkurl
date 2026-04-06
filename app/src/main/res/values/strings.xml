@@ -46,4 +46,9 @@
     <string name="update_later">Later</string>
     <string name="notification_title">URL capture is running</string>
     <string name="notification_text">Monitoring package: %1$s</string>
+    <string name="overlay_title">APK URL Capture</string>
+    <string name="overlay_start">Start</string>
+    <string name="overlay_stop">Stop</string>
+    <string name="show_overlay">Overlay</string>
+    <string name="overlay_permission_needed">Allow overlay permission to show floating window</string>
 </resources>

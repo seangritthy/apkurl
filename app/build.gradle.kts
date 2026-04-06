@@ -22,8 +22,8 @@ android {
         applicationId = "com.bongbee.apkurl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.2.2"
+        versionCode = 10
+        versionName = "1.3.0"
         buildConfigField("String", "GITHUB_OWNER", "\"seangritthy\"")
         buildConfigField("String", "GITHUB_REPO", "\"apkurl\"")
 
@@ -75,7 +75,19 @@ android {
     buildFeatures {
         buildConfig = true
     }
+}
 
+afterEvaluate {
+    tasks.named("assembleRelease") {
+        doLast {
+            val releaseDir = file("${layout.buildDirectory.get()}/outputs/apk/release")
+            val original = File(releaseDir, "app-release.apk")
+            val renamed = File(releaseDir, "apkurl.apk")
+            if (original.exists()) {
+                original.copyTo(renamed, overwrite = true)
+            }
+        }
+    }
 }
 
 dependencies {

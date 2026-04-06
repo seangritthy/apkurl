@@ -35,6 +35,7 @@ import java.util.Date
 import java.util.Locale
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
+import android.net.Uri
 
 class MainActivity : AppCompatActivity() {
 
@@ -75,6 +76,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.launchAppButton).setOnClickListener { launchSelectedApp() }
         findViewById<View>(R.id.startCaptureButton).setOnClickListener { requestVpnAndStart() }
         findViewById<View>(R.id.stopCaptureButton).setOnClickListener { stopCapture() }
+        findViewById<View>(R.id.overlayButton).setOnClickListener { showOverlay() }
         checkUpdatesButton.setOnClickListener { runUpdateCheck(manual = true) }
         findViewById<View>(R.id.clearLogButton).setOnClickListener {
             UrlLogStore.clear(this)
@@ -426,6 +428,22 @@ class MainActivity : AppCompatActivity() {
     private fun stopCapture() {
         startService(Intent(this, CaptureVpnService::class.java).setAction(CaptureVpnService.ACTION_STOP))
         statusText.text = getString(R.string.status_capture_stopped)
+    }
+
+    private fun showOverlay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, R.string.overlay_permission_needed, Toast.LENGTH_SHORT).show()
+            startActivity(
+                Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            )
+            return
+        }
+        val overlayIntent = Intent(this, OverlayService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(overlayIntent)
+        } else {
+            startService(overlayIntent)
+        }
     }
 
     // ── UI helpers ────────────────────────────────────────────────────────────
