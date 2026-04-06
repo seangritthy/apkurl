@@ -55,6 +55,11 @@
     <string name="overlay_stop">Stop</string>
     <string name="show_overlay">Overlay</string>
     <string name="overlay_permission_needed">Allow overlay permission to show floating window</string>
+    <string name="play_url">Play</string>
+    <string name="player_title">Player</string>
+    <string name="type_m3u8">M3U8</string>
+    <string name="type_media">MEDIA</string>
+    <string name="type_url">URL</string>
 
     <!-- Overlay premium UI -->
     <string name="overlay_version_placeholder">v1.0.0</string>

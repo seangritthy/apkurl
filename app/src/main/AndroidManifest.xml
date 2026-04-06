@@ -48,6 +48,13 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:configChanges="orientation|screenSize"
+            android:hardwareAccelerated="true" />
+
         <service
             android:name=".CaptureVpnService"
             android:enabled="true"

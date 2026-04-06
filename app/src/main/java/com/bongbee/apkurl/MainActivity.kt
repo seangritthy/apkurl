@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -48,7 +49,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var selectedAppIcon: ImageView
     private lateinit var selectedAppText: TextView
     private lateinit var statusText: TextView
-    private lateinit var logsText: TextView
+    private lateinit var logsRecyclerView: RecyclerView
+    private lateinit var logsEmptyText: TextView
     private lateinit var checkUpdatesButton: View
 
     // Button references for language switching
@@ -98,7 +100,8 @@ class MainActivity : AppCompatActivity() {
         selectedAppIcon = findViewById(R.id.selectedAppIcon)
         selectedAppText = findViewById(R.id.selectedAppText)
         statusText = findViewById(R.id.statusText)
-        logsText = findViewById(R.id.logsText)
+        logsRecyclerView = findViewById(R.id.logsRecyclerView)
+        logsEmptyText = findViewById(R.id.logsEmptyText)
         checkUpdatesButton = findViewById(R.id.checkUpdatesButton)
 
         pickAppButton = findViewById(R.id.pickAppButton)
@@ -110,6 +113,8 @@ class MainActivity : AppCompatActivity() {
         exportLogButton = findViewById(R.id.exportLogButton)
         clearLogButton = findViewById(R.id.clearLogButton)
         logTitleText = findViewById(R.id.logTitleText)
+
+        logsRecyclerView.layoutManager = LinearLayoutManager(this)
 
         pickAppButton.setOnClickListener { showAppPicker() }
         pickFromScreenButton.setOnClickListener { pickFromScreen() }
@@ -555,6 +560,115 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── URL Type Categorization ────────────────────────────────────────────────
+
+    enum class UrlType(val label: String, val color: Int) {
+        M3U8("M3U8", 0xFF4CAF50.toInt()),     // Green
+        MEDIA("MEDIA", 0xFF2196F3.toInt()),    // Blue
+        GENERAL("URL", 0xFF78909C.toInt())     // Blue-grey
+    }
+
+    data class LogEntry(
+        val timestamp: Long,
+        val packageName: String,
+        val url: String,
+        val type: UrlType
+    )
+
+    private fun categorizeUrl(url: String): UrlType {
+        val lower = url.lowercase()
+        if (lower.contains(".m3u8")) return UrlType.M3U8
+        val mediaExts = listOf(
+            ".ts", ".mp4", ".mp3", ".mpd", ".m4s", ".aac", ".flv", ".m4a", ".m4v",
+            ".webm", ".f4v", ".f4m", ".mov", ".avi", ".mkv", ".wav", ".ogg", ".m3u",
+            ".ismv", ".isma", ".vtt", ".srt"
+        )
+        val mediaKeywords = listOf(
+            "/video/", "/audio/", "/stream", "/live/", "/hls/", "/dash/",
+            "/media/", "/play/", "/vod/", "videoplayback", "googlevideo.com"
+        )
+        if (mediaExts.any { lower.contains("$it?") || lower.contains("$it&") || lower.endsWith(it) }) return UrlType.MEDIA
+        if (mediaKeywords.any { lower.contains(it) }) return UrlType.MEDIA
+        return UrlType.GENERAL
+    }
+
+    private fun parseLogRow(raw: String): LogEntry? {
+        val parts = raw.split("|", limit = 3)
+        if (parts.size < 3) return null
+        val timestamp = parts[0].toLongOrNull() ?: 0L
+        val packageName = parts[1]
+        val url = parts[2]
+        return LogEntry(timestamp, packageName, url, categorizeUrl(url))
+    }
+
+    // ── Log RecyclerView Adapter ──────────────────────────────────────────────
+
+    inner class LogAdapter(
+        private val entries: List<LogEntry>,
+        private val onPlay: (LogEntry) -> Unit
+    ) : RecyclerView.Adapter<LogAdapter.VH>() {
+
+        private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+
+        inner class VH(view: View) : RecyclerView.ViewHolder(view) {
+            val badge: TextView = view.findViewById(R.id.logTypeBadge)
+            val url: TextView = view.findViewById(R.id.logUrl)
+            val meta: TextView = view.findViewById(R.id.logMeta)
+            val playBtn: ImageView = view.findViewById(R.id.logPlayBtn)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_log_entry, parent, false)
+            return VH(view)
+        }
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val entry = entries[position]
+
+            // Set badge
+            holder.badge.text = entry.type.label
+            val bg = GradientDrawable()
+            bg.shape = GradientDrawable.RECTANGLE
+            bg.cornerRadius = dpToPx(4).toFloat()
+            bg.setColor(entry.type.color)
+            holder.badge.background = bg
+
+            // Set URL text
+            holder.url.text = entry.url
+
+            // Set meta (time + package)
+            val timeText = if (entry.timestamp > 0) timeFormat.format(Date(entry.timestamp)) else "--:--:--"
+            holder.meta.text = "[$timeText] ${entry.packageName}"
+
+            // Play button
+            holder.playBtn.setOnClickListener { onPlay(entry) }
+
+            // Long-press to copy URL
+            holder.itemView.setOnLongClickListener {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", entry.url))
+                Toast.makeText(this@MainActivity, "URL copied", Toast.LENGTH_SHORT).show()
+                true
+            }
+        }
+
+        override fun getItemCount() = entries.size
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    // ── Play URL ──────────────────────────────────────────────────────────────
+
+    private fun playUrl(entry: LogEntry) {
+        val intent = Intent(this, PlayerActivity::class.java)
+            .putExtra(PlayerActivity.EXTRA_URL, entry.url)
+            .putExtra(PlayerActivity.EXTRA_URL_TYPE, entry.type.label)
+        startActivity(intent)
+    }
+
     // ── UI helpers ────────────────────────────────────────────────────────────
 
     private fun updateSelectedAppLabel() {
@@ -636,20 +750,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderLogs() {
         val rows = UrlLogStore.readAll(this)
-        if (rows.isEmpty()) { logsText.text = s(R.string.no_logs, R.string.no_logs_kh); return }
-        logsText.text = rows.takeLast(200).joinToString("\n\n") { formatLogRow(it) }
-    }
-
-    private fun formatLogRow(raw: String): String {
-        val parts = raw.split("|", limit = 3)
-        if (parts.size < 3) return raw
-        val timestamp = parts[0].toLongOrNull() ?: 0L
-        val packageName = parts[1]
-        val url = parts[2]
-        val timeText = if (timestamp > 0)
-            SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
-        else "--:--:--"
-        return "[$timeText] $packageName\n$url"
+        if (rows.isEmpty()) {
+            logsEmptyText.visibility = View.VISIBLE
+            logsEmptyText.text = s(R.string.no_logs, R.string.no_logs_kh)
+            logsRecyclerView.visibility = View.GONE
+            return
+        }
+        logsEmptyText.visibility = View.GONE
+        logsRecyclerView.visibility = View.VISIBLE
+        val entries = rows.takeLast(200).mapNotNull { parseLogRow(it) }.reversed()
+        logsRecyclerView.adapter = LogAdapter(entries) { entry -> playUrl(entry) }
     }
 
     private fun requestNotificationPermissionIfNeeded() {

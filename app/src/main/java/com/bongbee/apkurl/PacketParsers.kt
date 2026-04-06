@@ -174,9 +174,9 @@ object UrlExtractor {
 
         val results = LinkedHashSet<String>()
 
-        // 1. TLS SNI — always try, even on TLS records (SNI is in plaintext handshake)
+        // ── TLS SNI — always try, even on TLS records (SNI is in plaintext handshake)
         val tlsSniHost = parseTlsClientHelloSni(payload)
-        if (!tlsSniHost.isNullOrBlank() && !isNoiseHost(tlsSniHost)) {
+        if (!tlsSniHost.isNullOrBlank()) {
             results.add("https://$tlsSniHost")
         }
 
@@ -188,12 +188,12 @@ object UrlExtractor {
         // 3. All direct http/https URLs in payload
         directUrlRegex.findAll(text).forEach {
             val url = cleanUrl(it.value)
-            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
+            if (hasValidDomain(url)) results.add(url)
         }
 
         // 4. Reconstruct full URL from HTTP request line + Host header
         val requestUrl = buildHttpRequestUrl(text)
-        if (requestUrl != null && hasValidDomain(requestUrl) && !isNoise(requestUrl)) {
+        if (requestUrl != null && hasValidDomain(requestUrl)) {
             results.add(requestUrl)
         }
 
@@ -218,44 +218,44 @@ object UrlExtractor {
         // 1. All direct http/https URLs in payload
         directUrlRegex.findAll(text).forEach {
             val url = cleanUrl(it.value)
-            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
+            if (hasValidDomain(url)) results.add(url)
         }
 
         // 2. Streaming media URLs (with known extensions)
         streamingMediaRegex.findAll(text).forEach {
             val url = cleanUrl(it.value)
-            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
+            if (hasValidDomain(url)) results.add(url)
         }
 
         // 3. HTTP redirect Location header
         extractHeader(text, "Location")?.let { loc ->
             val resolved = resolveUrl(loc.trim(), host)
-            if (resolved != null && hasValidDomain(resolved) && !isNoise(resolved)) results.add(resolved)
+            if (resolved != null && hasValidDomain(resolved)) results.add(resolved)
         }
 
         // 4. Content-Location header
         extractHeader(text, "Content-Location")?.let { loc ->
             val resolved = resolveUrl(loc.trim(), host)
-            if (resolved != null && hasValidDomain(resolved) && !isNoise(resolved)) results.add(resolved)
+            if (resolved != null && hasValidDomain(resolved)) results.add(resolved)
         }
 
         // 5. M3U8/HLS playlist lines
         if (text.contains("#EXTM3U") || text.contains("#EXTINF") || text.contains("#EXT-X-")) {
             extractM3u8Urls(text, host).forEach {
-                if (hasValidDomain(it) && !isNoise(it)) results.add(it)
+                if (hasValidDomain(it)) results.add(it)
             }
         }
 
         // 6. MPD/DASH manifest URLs
         if (text.contains("<MPD") || text.contains("<BaseURL>") || text.contains("<SegmentTemplate")) {
             extractMpdUrls(text, host).forEach {
-                if (hasValidDomain(it) && !isNoise(it)) results.add(it)
+                if (hasValidDomain(it)) results.add(it)
             }
         }
 
         // 7. JSON string values that look like URLs (for API responses)
         extractJsonUrls(text).forEach {
-            if (hasValidDomain(it) && !isNoise(it)) results.add(it)
+            if (hasValidDomain(it)) results.add(it)
         }
 
         return results.toList()
