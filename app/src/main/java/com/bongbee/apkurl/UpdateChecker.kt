@@ -5,9 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -93,12 +96,66 @@ object UpdateChecker {
         AlertDialog.Builder(context)
             .setTitle("Update Available")
             .setMessage("Version ${updateInfo.versionTag}\n\n${updateInfo.releaseNotes}")
-            .setPositiveButton("Download") { _, _ ->
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(updateInfo.downloadUrl))
-                context.startActivity(intent)
-            }
+            .setPositiveButton("Install") { _, _ -> }
             .setNegativeButton("Later", null)
             .show()
+    }
+
+    suspend fun downloadUpdateApk(context: Context, updateInfo: UpdateInfo): File? = withContext(Dispatchers.IO) {
+        val destination = File(context.cacheDir, "updates/${safeTag(updateInfo.versionTag)}.apk")
+        destination.parentFile?.mkdirs()
+
+        var connection: HttpURLConnection? = null
+        try {
+            connection = URL(updateInfo.downloadUrl).openConnection() as HttpURLConnection
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept", "application/octet-stream")
+            connection.setRequestProperty("User-Agent", "apkurl-android")
+            connection.connect()
+
+            if (connection.responseCode !in 200..299) {
+                return@withContext null
+            }
+
+            connection.inputStream.use { input ->
+                FileOutputStream(destination).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            destination
+        } catch (_: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    fun launchInAppInstaller(context: Context, apkFile: File): Boolean {
+        return try {
+            val uri: Uri = FileProvider.getUriForFile(
+                context,
+                "${BuildConfig.APPLICATION_ID}.fileprovider",
+                apkFile
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                data = uri
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+            }
+            context.startActivity(installIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun safeTag(tag: String): String {
+        return tag.filter { it.isLetterOrDigit() || it == '.' || it == '_' || it == '-' }
+            .ifBlank { "latest" }
     }
 
     private fun compareVersions(v1: String, v2: String): Int {

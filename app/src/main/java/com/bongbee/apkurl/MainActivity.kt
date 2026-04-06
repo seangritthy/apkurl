@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var selectedAppText: TextView
     private lateinit var statusText: TextView
     private lateinit var logsText: TextView
+    private lateinit var checkUpdatesButton: View
 
     private var pendingPackageForStart: String? = null
     private var pendingPickFromScreen: Boolean = false
@@ -67,12 +68,14 @@ class MainActivity : AppCompatActivity() {
         selectedAppText = findViewById(R.id.selectedAppText)
         statusText = findViewById(R.id.statusText)
         logsText = findViewById(R.id.logsText)
+        checkUpdatesButton = findViewById(R.id.checkUpdatesButton)
 
         findViewById<View>(R.id.pickAppButton).setOnClickListener { showAppPicker() }
         findViewById<View>(R.id.pickFromScreenButton).setOnClickListener { pickFromScreen() }
         findViewById<View>(R.id.launchAppButton).setOnClickListener { launchSelectedApp() }
         findViewById<View>(R.id.startCaptureButton).setOnClickListener { requestVpnAndStart() }
         findViewById<View>(R.id.stopCaptureButton).setOnClickListener { stopCapture() }
+        checkUpdatesButton.setOnClickListener { runUpdateCheck(manual = true) }
         findViewById<View>(R.id.clearLogButton).setOnClickListener {
             UrlLogStore.clear(this)
             renderLogs()
@@ -112,12 +115,74 @@ class MainActivity : AppCompatActivity() {
     // ── Silent update check on start ──────────────────────────────────────────
 
     private fun silentUpdateCheck() {
+        runUpdateCheck(manual = false)
+    }
+
+    private fun runUpdateCheck(manual: Boolean) {
         lifecycleScope.launch {
-            val updateInfo = UpdateChecker.checkForUpdates() ?: return@launch
-            if (UpdateChecker.isUpdateAvailable(this@MainActivity, updateInfo.versionTag)) {
-                UpdateChecker.showUpdateDialog(this@MainActivity, updateInfo)
+            if (manual) {
+                statusText.text = getString(R.string.status_checking_updates)
+                checkUpdatesButton.isEnabled = false
+            }
+
+            val updateInfo = UpdateChecker.checkForUpdates()
+            if (updateInfo == null) {
+                if (manual) {
+                    statusText.text = getString(R.string.status_update_check_failed)
+                    Toast.makeText(this@MainActivity, R.string.status_update_check_failed, Toast.LENGTH_SHORT).show()
+                    checkUpdatesButton.isEnabled = true
+                }
+                return@launch
+            }
+
+            val hasUpdate = UpdateChecker.isUpdateAvailable(this@MainActivity, updateInfo.versionTag)
+            if (hasUpdate) {
+                statusText.text = getString(R.string.status_update_available, updateInfo.versionTag)
+                showInAppUpdateDialog(updateInfo)
+            } else if (manual) {
+                statusText.text = getString(R.string.status_already_latest)
+                Toast.makeText(this@MainActivity, R.string.status_already_latest, Toast.LENGTH_SHORT).show()
+            }
+
+            if (manual) {
+                checkUpdatesButton.isEnabled = true
             }
         }
+    }
+
+    private fun showInAppUpdateDialog(updateInfo: UpdateChecker.UpdateInfo) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_available_title)
+            .setMessage(getString(R.string.update_available_message, updateInfo.versionTag, updateInfo.releaseNotes))
+            .setNegativeButton(R.string.update_later, null)
+            .setPositiveButton(R.string.install_update_now) { _, _ ->
+                lifecycleScope.launch {
+                    statusText.text = getString(R.string.status_downloading_update)
+                    checkUpdatesButton.isEnabled = false
+
+                    val apkFile = withContext(Dispatchers.IO) {
+                        UpdateChecker.downloadUpdateApk(this@MainActivity, updateInfo)
+                    }
+                    if (apkFile == null) {
+                        statusText.text = getString(R.string.status_update_check_failed)
+                        Toast.makeText(this@MainActivity, R.string.status_download_failed, Toast.LENGTH_SHORT).show()
+                        checkUpdatesButton.isEnabled = true
+                        return@launch
+                    }
+
+                    val launched = UpdateChecker.launchInAppInstaller(this@MainActivity, apkFile)
+                    statusText.text = if (launched) {
+                        getString(R.string.status_install_prompt_opened)
+                    } else {
+                        getString(R.string.status_install_prompt_failed)
+                    }
+                    if (!launched) {
+                        Toast.makeText(this@MainActivity, R.string.status_install_prompt_failed, Toast.LENGTH_SHORT).show()
+                    }
+                    checkUpdatesButton.isEnabled = true
+                }
+            }
+            .show()
     }
 
     // ── App picker with icons ─────────────────────────────────────────────────

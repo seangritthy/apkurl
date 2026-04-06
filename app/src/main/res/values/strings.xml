@@ -21,6 +21,10 @@
     <string name="status_update_check_failed">Update check failed</string>
     <string name="status_update_available">Update available: %1$s</string>
     <string name="status_already_latest">Already on latest version</string>
+    <string name="status_downloading_update">Downloading update…</string>
+    <string name="status_download_failed">Update download failed</string>
+    <string name="status_install_prompt_opened">Installer opened. Confirm update to finish.</string>
+    <string name="status_install_prompt_failed">Cannot open installer</string>
     <string name="no_logs">No URLs captured yet.</string>
     <string name="pick_app_title">Choose target app</string>
     <string name="pick_from_screen_title">Pick from phone screen</string>
@@ -34,6 +38,12 @@
     <string name="selected_from_screen">Selected from screen: %1$s</string>
     <string name="pick_app_first">Pick an app first.</string>
     <string name="cannot_launch_app">Cannot open selected app.</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_message">Version %1$s is available.
+
+%2$s</string>
+    <string name="install_update_now">Install now</string>
+    <string name="update_later">Later</string>
     <string name="notification_title">URL capture is running</string>
     <string name="notification_text">Monitoring package: %1$s</string>
 </resources>
