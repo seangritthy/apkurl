@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">APK URL Extractor</string>
     <string name="pick_app">Pick app to monitor</string>
+    <string name="pick_app_short">Choose</string>
     <string name="launch_selected_app">Open selected app</string>
     <string name="start_capture">Start capture</string>
     <string name="stop_capture">Stop capture</string>
@@ -22,6 +23,7 @@
     <string name="no_logs">No URLs captured yet.</string>
     <string name="pick_app_title">Choose target app</string>
     <string name="no_apps_found">No launchable apps found.</string>
+    <string name="loading_apps">Loading apps…</string>
     <string name="pick_app_first">Pick an app first.</string>
     <string name="cannot_launch_app">Cannot open selected app.</string>
     <string name="notification_title">URL capture is running</string>

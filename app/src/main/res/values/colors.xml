@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Legacy -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -7,4 +8,11 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- Material 3 tokens -->
+    <color name="md_primary">#1B6EF3</color>
+    <color name="md_primary_container">#D8E6FF</color>
+    <color name="md_secondary">#545F71</color>
+    <color name="md_surface">#F8F9FF</color>
+    <color name="md_outline_variant">#C3C8D6</color>
 </resources>
