@@ -1,18 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Legacy -->
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
 
-    <!-- Material 3 tokens -->
+    <!-- Premium dark palette (matches overlay) -->
     <color name="md_primary">#1B6EF3</color>
-    <color name="md_primary_container">#D8E6FF</color>
-    <color name="md_secondary">#545F71</color>
-    <color name="md_surface">#F8F9FF</color>
-    <color name="md_outline_variant">#C3C8D6</color>
+    <color name="md_on_primary">#FFFFFF</color>
+    <color name="md_primary_container">#07479A</color>
+    <color name="md_on_primary_container">#D8E6FF</color>
+    <color name="md_secondary">#BBC7DB</color>
+    <color name="md_on_secondary">#263141</color>
+    <color name="md_surface">#111318</color>
+    <color name="md_on_surface">#BBC7DB</color>
+    <color name="md_on_surface_variant">#99ADC8FF</color>
+    <color name="md_surface_container">#1A1D24</color>
+    <color name="md_surface_container_high">#242830</color>
+    <color name="md_outline">#43474E</color>
+    <color name="md_outline_variant">#2A2E36</color>
+    <color name="md_accent_text">#ADC8FF</color>
+    <color name="md_error">#FF6B6B</color>
 </resources>

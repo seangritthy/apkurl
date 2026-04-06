@@ -13,12 +13,13 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
@@ -26,6 +27,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,12 +43,24 @@ import androidx.activity.result.contract.ActivityResultContracts
 class MainActivity : AppCompatActivity() {
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    private var isKhmer = false
 
     private lateinit var selectedAppIcon: ImageView
     private lateinit var selectedAppText: TextView
     private lateinit var statusText: TextView
     private lateinit var logsText: TextView
     private lateinit var checkUpdatesButton: View
+
+    // Button references for language switching
+    private lateinit var pickAppButton: MaterialButton
+    private lateinit var pickFromScreenButton: MaterialButton
+    private lateinit var launchAppButton: MaterialButton
+    private lateinit var startCaptureButton: MaterialButton
+    private lateinit var stopCaptureButton: MaterialButton
+    private lateinit var overlayButton: MaterialButton
+    private lateinit var exportLogButton: MaterialButton
+    private lateinit var clearLogButton: MaterialButton
+    private lateinit var logTitleText: TextView
 
     private var pendingPackageForStart: String? = null
     private var pendingPickFromScreen: Boolean = false
@@ -55,7 +69,7 @@ class MainActivity : AppCompatActivity() {
         if (uri != null) {
             val success = UrlLogStore.exportToTxt(this, uri)
             if (success) {
-                statusText.text = getString(R.string.export_success)
+                statusText.text = s(R.string.export_success, R.string.export_success_kh)
                 Toast.makeText(this, R.string.export_success, Toast.LENGTH_SHORT).show()
             } else {
                 statusText.text = getString(R.string.export_failed)
@@ -76,6 +90,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        isKhmer = prefs.getBoolean("overlay_lang_kh", false)
+
         val toolbar: Toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
 
@@ -85,24 +101,50 @@ class MainActivity : AppCompatActivity() {
         logsText = findViewById(R.id.logsText)
         checkUpdatesButton = findViewById(R.id.checkUpdatesButton)
 
-        findViewById<View>(R.id.pickAppButton).setOnClickListener { showAppPicker() }
-        findViewById<View>(R.id.pickFromScreenButton).setOnClickListener { pickFromScreen() }
-        findViewById<View>(R.id.launchAppButton).setOnClickListener { launchSelectedApp() }
-        findViewById<View>(R.id.startCaptureButton).setOnClickListener { requestVpnAndStart() }
-        findViewById<View>(R.id.stopCaptureButton).setOnClickListener { stopCapture() }
-        findViewById<View>(R.id.overlayButton).setOnClickListener { showOverlay() }
+        pickAppButton = findViewById(R.id.pickAppButton)
+        pickFromScreenButton = findViewById(R.id.pickFromScreenButton)
+        launchAppButton = findViewById(R.id.launchAppButton)
+        startCaptureButton = findViewById(R.id.startCaptureButton)
+        stopCaptureButton = findViewById(R.id.stopCaptureButton)
+        overlayButton = findViewById(R.id.overlayButton)
+        exportLogButton = findViewById(R.id.exportLogButton)
+        clearLogButton = findViewById(R.id.clearLogButton)
+        logTitleText = findViewById(R.id.logTitleText)
+
+        pickAppButton.setOnClickListener { showAppPicker() }
+        pickFromScreenButton.setOnClickListener { pickFromScreen() }
+        launchAppButton.setOnClickListener { launchSelectedApp() }
+        startCaptureButton.setOnClickListener { requestVpnAndStart() }
+        stopCaptureButton.setOnClickListener { stopCapture() }
+        overlayButton.setOnClickListener { showOverlay() }
         checkUpdatesButton.setOnClickListener { runUpdateCheck(manual = true) }
-        findViewById<View>(R.id.exportLogButton).setOnClickListener { exportLogs() }
-        findViewById<View>(R.id.clearLogButton).setOnClickListener {
+        exportLogButton.setOnClickListener { exportLogs() }
+        clearLogButton.setOnClickListener {
             UrlLogStore.clear(this)
             renderLogs()
-            statusText.text = getString(R.string.status_logs_cleared)
+            statusText.text = s(R.string.status_logs_cleared, R.string.status_logs_cleared_kh)
         }
 
+        applyLanguage()
         requestNotificationPermissionIfNeeded()
         updateSelectedAppLabel()
         renderLogs()
         silentUpdateCheck()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-read language in case changed from Settings
+        val newKhmer = prefs.getBoolean("overlay_lang_kh", false)
+        if (newKhmer != isKhmer) {
+            isKhmer = newKhmer
+            applyLanguage()
+            invalidateOptionsMenu()
+        }
+        if (pendingPickFromScreen && hasUsageAccessPermission()) {
+            pendingPickFromScreen = false
+            resolveAndSelectForegroundApp()
+        }
     }
 
     override fun onStart() {
@@ -116,17 +158,48 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (pendingPickFromScreen && hasUsageAccessPermission()) {
-            pendingPickFromScreen = false
-            resolveAndSelectForegroundApp()
-        }
-    }
-
     override fun onStop() {
         super.onStop()
         unregisterReceiver(logReceiver)
+    }
+
+    // ── Menu ───────────────────────────────────────────────────────────────────
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                startActivity(Intent(this, SettingsActivity::class.java))
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    // ── Language ────────────────────────────────────────────────────────────────
+
+    /** Helper: return EN or KH string based on current language */
+    private fun s(enId: Int, khId: Int): String =
+        if (isKhmer) getString(khId) else getString(enId)
+
+    private fun applyLanguage() {
+        supportActionBar?.title = s(R.string.app_name, R.string.app_name_kh)
+        pickAppButton.text = s(R.string.pick_app_short, R.string.pick_app_short_kh)
+        pickFromScreenButton.text = s(R.string.pick_from_screen_short, R.string.pick_from_screen_short_kh)
+        launchAppButton.text = s(R.string.launch_selected_app, R.string.launch_selected_app_kh)
+        startCaptureButton.text = s(R.string.start_capture, R.string.start_capture_kh)
+        stopCaptureButton.text = s(R.string.stop_capture, R.string.stop_capture_kh)
+        overlayButton.text = s(R.string.show_overlay, R.string.show_overlay_kh)
+        (checkUpdatesButton as? MaterialButton)?.text = s(R.string.check_updates, R.string.check_updates_kh)
+        exportLogButton.text = s(R.string.export_logs, R.string.export_logs_kh)
+        clearLogButton.text = s(R.string.clear_logs, R.string.clear_logs_kh)
+        logTitleText.text = s(R.string.log_title, R.string.log_title_kh)
+        statusText.text = s(R.string.status_idle, R.string.status_idle_kh)
+        updateSelectedAppLabel()
     }
 
     // ── Silent update check on start ──────────────────────────────────────────
@@ -214,7 +287,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showAppPicker() {
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.pick_app_title)
+            .setTitle(s(R.string.pick_app_title, R.string.pick_app_title_kh))
             .setNegativeButton(android.R.string.cancel, null)
             .create()
 
@@ -227,9 +300,9 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
 
         lifecycleScope.launch {
-            statusText.text = getString(R.string.loading_apps)
+            statusText.text = s(R.string.loading_apps, R.string.loading_apps_kh)
             val appItems = withContext(Dispatchers.Default) { loadAllApps() }
-            statusText.text = getString(R.string.status_idle)
+            statusText.text = s(R.string.status_idle, R.string.status_idle_kh)
 
             if (appItems.isEmpty()) {
                 dialog.dismiss()
@@ -241,7 +314,8 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
                 prefs.edit().putString(KEY_SELECTED_PACKAGE, selected.packageName).apply()
                 updateSelectedAppLabel()
-                statusText.text = getString(R.string.status_app_selected, selected.label)
+                statusText.text = if (isKhmer) getString(R.string.status_app_selected_kh, selected.label)
+                                  else getString(R.string.status_app_selected, selected.label)
             }
         }
     }
@@ -267,21 +341,22 @@ class MainActivity : AppCompatActivity() {
             statusText.text = getString(R.string.status_detecting_foreground_app)
             val packageName = withContext(Dispatchers.Default) { findRecentForegroundPackage() }
             if (packageName.isNullOrBlank()) {
-                statusText.text = getString(R.string.status_idle)
+                statusText.text = s(R.string.status_idle, R.string.status_idle_kh)
                 Toast.makeText(this@MainActivity, R.string.foreground_app_not_found, Toast.LENGTH_SHORT).show()
                 return@launch
             }
 
             val appItem = withContext(Dispatchers.Default) { buildAppItem(packageName) }
             if (appItem == null) {
-                statusText.text = getString(R.string.status_idle)
+                statusText.text = s(R.string.status_idle, R.string.status_idle_kh)
                 Toast.makeText(this@MainActivity, R.string.foreground_app_not_launchable, Toast.LENGTH_SHORT).show()
                 return@launch
             }
 
             prefs.edit().putString(KEY_SELECTED_PACKAGE, appItem.packageName).apply()
             updateSelectedAppLabel()
-            statusText.text = getString(R.string.status_app_selected, appItem.label)
+            statusText.text = if (isKhmer) getString(R.string.status_app_selected_kh, appItem.label)
+                              else getString(R.string.status_app_selected, appItem.label)
             Toast.makeText(this@MainActivity, getString(R.string.selected_from_screen, appItem.label), Toast.LENGTH_SHORT).show()
         }
     }
@@ -392,11 +467,11 @@ class MainActivity : AppCompatActivity() {
     private fun launchSelectedApp() {
         val packageName = prefs.getString(KEY_SELECTED_PACKAGE, null)
         if (packageName.isNullOrBlank()) {
-            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, s(R.string.pick_app_first, R.string.pick_app_first_kh), Toast.LENGTH_SHORT).show(); return
         }
         if (!isRealLaunchableApp(packageName)) {
             prefs.edit().remove(KEY_SELECTED_PACKAGE).apply(); updateSelectedAppLabel()
-            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, s(R.string.pick_app_first, R.string.pick_app_first_kh), Toast.LENGTH_SHORT).show(); return
         }
         getLaunchIntentForPackageSafe(packageName)
             ?.let { startActivity(it) }
@@ -406,11 +481,11 @@ class MainActivity : AppCompatActivity() {
     private fun requestVpnAndStart() {
         val packageName = prefs.getString(KEY_SELECTED_PACKAGE, null)
         if (packageName.isNullOrBlank()) {
-            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, s(R.string.pick_app_first, R.string.pick_app_first_kh), Toast.LENGTH_SHORT).show(); return
         }
         if (!isRealLaunchableApp(packageName)) {
             prefs.edit().remove(KEY_SELECTED_PACKAGE).apply(); updateSelectedAppLabel()
-            Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, s(R.string.pick_app_first, R.string.pick_app_first_kh), Toast.LENGTH_SHORT).show(); return
         }
         pendingPackageForStart = packageName
         val vpnIntent = VpnService.prepare(this)
@@ -445,21 +520,22 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         val name = buildAppItem(packageName)?.label ?: packageName
-        statusText.text = getString(R.string.status_capture_started, name)
+        statusText.text = if (isKhmer) getString(R.string.status_capture_started_kh, name)
+                          else getString(R.string.status_capture_started, name)
     }
 
     private fun stopCapture() {
         startService(Intent(this, CaptureVpnService::class.java).setAction(CaptureVpnService.ACTION_STOP))
-        statusText.text = getString(R.string.status_capture_stopped)
+        statusText.text = s(R.string.status_capture_stopped, R.string.status_capture_stopped_kh)
     }
 
     private fun exportLogs() {
         val rows = UrlLogStore.readAll(this)
         if (rows.isEmpty()) {
-            Toast.makeText(this, R.string.export_empty, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, s(R.string.export_empty, R.string.export_empty_kh), Toast.LENGTH_SHORT).show()
             return
         }
-        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         exportFileLauncher.launch("apkurl_${timestamp}.txt")
     }
 
@@ -484,14 +560,14 @@ class MainActivity : AppCompatActivity() {
     private fun updateSelectedAppLabel() {
         val packageName = prefs.getString(KEY_SELECTED_PACKAGE, null)
         if (packageName.isNullOrBlank()) {
-            selectedAppText.text = getString(R.string.selected_app_none)
+            selectedAppText.text = s(R.string.selected_app_none, R.string.selected_app_none_kh)
             selectedAppIcon.setImageResource(R.mipmap.ic_launcher)
             return
         }
         val appItem = buildAppItem(packageName)
         if (appItem == null) {
             prefs.edit().remove(KEY_SELECTED_PACKAGE).apply()
-            selectedAppText.text = getString(R.string.selected_app_none)
+            selectedAppText.text = s(R.string.selected_app_none, R.string.selected_app_none_kh)
             selectedAppIcon.setImageResource(R.mipmap.ic_launcher)
         } else {
             selectedAppText.text = appItem.label
@@ -560,7 +636,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderLogs() {
         val rows = UrlLogStore.readAll(this)
-        if (rows.isEmpty()) { logsText.text = getString(R.string.no_logs); return }
+        if (rows.isEmpty()) { logsText.text = s(R.string.no_logs, R.string.no_logs_kh); return }
         logsText.text = rows.takeLast(200).joinToString("\n\n") { formatLogRow(it) }
     }
 

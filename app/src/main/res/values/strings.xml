@@ -39,15 +39,13 @@
     <string name="no_apps_found">No launchable apps found.</string>
     <string name="loading_apps">Loading apps…</string>
     <string name="status_detecting_foreground_app">Detecting app on screen…</string>
-    <string name="foreground_app_not_found">Couldn’t detect an app from your screen. Open it, then try again.</string>
+    <string name="foreground_app_not_found">Couldn\'t detect an app from your screen. Open it, then try again.</string>
     <string name="foreground_app_not_launchable">Detected app cannot be selected. Try the Choose button.</string>
     <string name="selected_from_screen">Selected from screen: %1$s</string>
     <string name="pick_app_first">Pick an app first.</string>
     <string name="cannot_launch_app">Cannot open selected app.</string>
     <string name="update_available_title">Update available</string>
-    <string name="update_available_message">Version %1$s is available.
-
-%2$s</string>
+    <string name="update_available_message">Version %1$s is available.\n\n%2$s</string>
     <string name="install_update_now">Install now</string>
     <string name="update_later">Later</string>
     <string name="notification_title">URL capture is running</string>
@@ -74,7 +72,48 @@
     <string name="overlay_lang_en">🌐 EN</string>
     <string name="overlay_lang_kh">🌐 ខ្មែរ</string>
 
-    <!-- Khmer overlay strings (used in-app when user switches to KH) -->
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_desc">Choose app language</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version_format">Version %1$s  ·  Build %2$d</string>
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_github">View on GitHub</string>
+
+    <!-- Khmer: Main activity strings -->
+    <string name="app_name_kh">កម្មវិធីទាញយក URL APK</string>
+    <string name="pick_app_short_kh">ជ្រើសរើស</string>
+    <string name="pick_from_screen_short_kh">ពីអេក្រង់</string>
+    <string name="launch_selected_app_kh">បើកកម្មវិធី</string>
+    <string name="start_capture_kh">ចាប់ផ្ដើម</string>
+    <string name="stop_capture_kh">បញ្ឈប់</string>
+    <string name="clear_logs_kh">សម្អាត</string>
+    <string name="export_logs_kh">នាំចេញ</string>
+    <string name="check_updates_kh">ពិនិត្យបច្ចុប្បន្នភាព</string>
+    <string name="log_title_kh">URLs ដែលចាប់បាន</string>
+    <string name="selected_app_none_kh">កម្មវិធីដែលបានជ្រើស៖ មិនមាន</string>
+    <string name="status_idle_kh">ស្ថានភាព៖ រង់ចាំ</string>
+    <string name="status_app_selected_kh">បានជ្រើស %1$s</string>
+    <string name="status_capture_started_kh">ការចាប់យកបានចាប់ផ្ដើមសម្រាប់ %1$s</string>
+    <string name="status_capture_stopped_kh">ការចាប់យកបានបញ្ឈប់</string>
+    <string name="status_logs_cleared_kh">កំណត់ត្រាបានសម្អាត</string>
+    <string name="no_logs_kh">មិនទាន់មាន URL ចាប់យកទេ។</string>
+    <string name="show_overlay_kh">បង្ហាញ</string>
+    <string name="pick_app_title_kh">ជ្រើសរើសកម្មវិធីគោលដៅ</string>
+    <string name="pick_app_first_kh">សូមជ្រើសរើសកម្មវិធីមុន។</string>
+    <string name="export_success_kh">URLs បាននាំចេញទៅឯកសារ</string>
+    <string name="export_empty_kh">មិនមាន URLs សម្រាប់នាំចេញ</string>
+    <string name="loading_apps_kh">កំពុងផ្ទុកកម្មវិធី…</string>
+
+    <!-- Khmer: Settings strings -->
+    <string name="settings_title_kh">ការកំណត់</string>
+    <string name="settings_language_kh">ភាសា</string>
+    <string name="settings_language_desc_kh">ជ្រើសរើសភាសាកម្មវិធី</string>
+    <string name="settings_about_kh">អំពី</string>
+    <string name="settings_check_updates_kh">ពិនិត្យបច្ចុប្បន្នភាព</string>
+
+    <!-- Khmer: Overlay strings -->
     <string name="overlay_title_kh">ចាប់យក URL APK</string>
     <string name="overlay_start_kh">ចាប់ផ្ដើម</string>
     <string name="overlay_stop_kh">បញ្ឈប់</string>
@@ -84,7 +123,5 @@
     <string name="overlay_log_label_kh">URLs ដែលចាប់បាន</string>
     <string name="overlay_device_label_kh">ឧបករណ៍</string>
     <string name="overlay_android_label_kh">អេនដ្រយ៍ដ៍</string>
-    <string name="no_logs_kh">មិនទាន់មាន URL ចាប់យកទេ។</string>
     <string name="overlay_footer_kh">បងប៊ី  ·  ទាញយក URL APK</string>
-    <string name="clear_logs_kh">សម្អាត</string>
 </resources>
