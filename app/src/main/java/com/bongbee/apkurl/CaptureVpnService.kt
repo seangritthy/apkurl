@@ -37,6 +37,15 @@ class CaptureVpnService : VpnService() {
     @Volatile
     private var tunOutputStream: FileOutputStream? = null
 
+    @Volatile
+    private var currentTargetPackage: String = ""
+
+    /** DNS response IP → hostname mapping */
+    private val ipHostMap = ConcurrentHashMap<String, String>()
+
+    /** Global deduplication to avoid logging the same URL repeatedly */
+    private val seenUrls = ConcurrentHashMap.newKeySet<String>()
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
@@ -63,6 +72,7 @@ class CaptureVpnService : VpnService() {
 
     private fun startCapture(targetPackage: String) {
         if (isRunning) return
+        currentTargetPackage = targetPackage
 
         val builder = Builder()
             .setSession("APK URL Capture")
@@ -107,6 +117,9 @@ class CaptureVpnService : VpnService() {
         for (s in udpSessions.values) { try { s.socket.close() } catch (_: Exception) {} }
         udpSessions.clear()
 
+        ipHostMap.clear()
+        seenUrls.clear()
+
         try { tunOutputStream?.close() } catch (_: Exception) {}
         tunOutputStream = null
         try { vpnInterface?.close() } catch (_: Exception) {}
@@ -129,14 +142,28 @@ class CaptureVpnService : VpnService() {
                 val proto = buf[9].toInt() and 0xFF
                 val pkt = buf.copyOf(len)
 
-                // Extract URLs from TCP for logging
+                // Extract URLs from TCP for logging + track host per session
                 if (proto == PROTO_TCP) {
                     val payload = PacketParsers.extractTcpPayload(pkt, len)
                     if (payload != null && payload.isNotEmpty()) {
+                        // Detect host and TLS status for session tracking
+                        val sniHost = UrlExtractor.parseTlsClientHelloSni(payload)
+                        val httpHost = if (sniHost == null) UrlExtractor.extractHttpHost(payload) else null
+
+                        val ihl = (pkt[0].toInt() and 0x0F) * 4
+                        val srcPort = rU16(pkt, ihl)
+                        if (sniHost != null) {
+                            tcpSessions[srcPort]?.let { it.host = sniHost; it.isTls = true }
+                        } else if (httpHost != null) {
+                            tcpSessions[srcPort]?.let { it.host = httpHost }
+                        }
+
                         for (url in UrlExtractor.extractUrls(payload)) {
-                            val row = logRow(targetPackage, url)
-                            UrlLogStore.append(this, row)
-                            sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+                            if (seenUrls.add(url)) {
+                                val row = logRow(targetPackage, url)
+                                UrlLogStore.append(this, row)
+                                sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+                            }
                         }
                     }
                 }
@@ -172,9 +199,11 @@ class CaptureVpnService : VpnService() {
             val host = PacketParsers.extractDnsQueryName(data)
             if (!host.isNullOrBlank()) {
                 val url = "https://$host"
-                val row = logRow(targetPackage, url)
-                UrlLogStore.append(this, row)
-                sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+                if (seenUrls.add(url)) {
+                    val row = logRow(targetPackage, url)
+                    UrlLogStore.append(this, row)
+                    sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+                }
             }
         }
 
@@ -202,6 +231,20 @@ class CaptureVpnService : VpnService() {
             while (isRunning) {
                 val dg = DatagramPacket(buf, buf.size)
                 s.socket.receive(dg)
+
+                // Parse DNS responses to build IP→hostname mapping
+                if (s.lastDstPort == 53 && dg.length > 12) {
+                    try {
+                        val dnsPayload = buf.copyOf(dg.length)
+                        val mapping = PacketParsers.parseDnsResponse(dnsPayload)
+                        if (mapping != null) {
+                            for (ip in mapping.second) {
+                                ipHostMap[ip] = mapping.first
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 val total = 20 + 8 + dg.length
                 val r = ByteArray(total)
                 r[0] = 0x45.toByte()
@@ -288,6 +331,26 @@ class CaptureVpnService : VpnService() {
             while (isRunning && !s.socket.isClosed) {
                 val n = inp.read(buf)
                 if (n < 0) break
+
+                // Extract URLs from non-TLS response data (HTTP responses)
+                if (!s.isTls && n > 0) {
+                    try {
+                        val data = buf.copyOf(n)
+                        val host = s.host ?: ipHostMap[InetAddress.getByAddress(s.dstIp).hostAddress ?: ""]
+                        for (url in UrlExtractor.extractResponseUrls(data, host)) {
+                            if (seenUrls.add(url)) {
+                                val row = logRow(currentTargetPackage, url)
+                                UrlLogStore.append(this@CaptureVpnService, row)
+                                sendBroadcast(
+                                    Intent(ACTION_NEW_RECORD)
+                                        .setPackage(packageName)
+                                        .putExtra(EXTRA_LOG_ROW, row)
+                                )
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+
                 writeTun(buildTcp(s.dstIp, s.srcIp, s.dstPort, s.srcPort, s.sSeq, s.cSeq, 0x18, buf.copyOf(n)))
                 s.sSeq += n
             }
@@ -367,7 +430,7 @@ class CaptureVpnService : VpnService() {
 
     private fun logRow(pkg: String, v: String) = "${System.currentTimeMillis()}|$pkg|$v"
 
-    private data class TcpSession(val socket: Socket, val srcPort: Int, val dstPort: Int, val srcIp: ByteArray, val dstIp: ByteArray, var cSeq: Long, var sSeq: Long)
+    private data class TcpSession(val socket: Socket, val srcPort: Int, val dstPort: Int, val srcIp: ByteArray, val dstIp: ByteArray, var cSeq: Long, var sSeq: Long, var host: String? = null, var isTls: Boolean = false)
     private class UdpSession(val socket: DatagramSocket, val srcPort: Int, val srcIp: ByteArray, var lastDstIp: ByteArray? = null, var lastDstPort: Int = 0)
 
     companion object {

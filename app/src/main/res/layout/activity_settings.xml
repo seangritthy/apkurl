@@ -162,6 +162,15 @@
                         android:layout_height="1dp"
                         android:layout_marginVertical="12dp" />
 
+                    <TextView
+                        android:id="@+id/settingsUpdateStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:visibility="gone"
+                        android:layout_marginBottom="8dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:alpha="0.7" />
+
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/settingsCheckUpdatesBtn"
                         style="@style/Widget.Material3.Button.TonalButton"

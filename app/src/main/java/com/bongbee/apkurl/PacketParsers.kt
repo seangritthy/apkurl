@@ -28,7 +28,6 @@ object PacketParsers {
      */
     fun extractDnsQueryName(udpPayload: ByteArray): String? {
         if (udpPayload.size < 12) return null
-        // QR bit = 0 means query
         val flags = ((udpPayload[2].toInt() and 0xFF) shl 8) or (udpPayload[3].toInt() and 0xFF)
         if (flags and 0x8000 != 0) return null // response, not query
         val qdCount = ((udpPayload[4].toInt() and 0xFF) shl 8) or (udpPayload[5].toInt() and 0xFF)
@@ -47,11 +46,72 @@ object PacketParsers {
         val name = sb.toString()
         return if (name.isNotBlank() && name.contains('.')) name else null
     }
+
+    /**
+     * Parse DNS response to extract hostname → IP address mappings (A records).
+     * Returns (queriedHostname, list-of-IPs), or null on failure.
+     */
+    fun parseDnsResponse(udpPayload: ByteArray): Pair<String, List<String>>? {
+        if (udpPayload.size < 12) return null
+        val flags = ((udpPayload[2].toInt() and 0xFF) shl 8) or (udpPayload[3].toInt() and 0xFF)
+        if (flags and 0x8000 == 0) return null // not a response
+        val qdCount = ((udpPayload[4].toInt() and 0xFF) shl 8) or (udpPayload[5].toInt() and 0xFF)
+        val anCount = ((udpPayload[6].toInt() and 0xFF) shl 8) or (udpPayload[7].toInt() and 0xFF)
+        if (qdCount < 1 || anCount < 1) return null
+
+        // Parse question section to get queried hostname
+        var idx = 12
+        val hostname = StringBuilder()
+        while (idx < udpPayload.size) {
+            val labelLen = udpPayload[idx].toInt() and 0xFF
+            if (labelLen == 0) { idx++; break }
+            if (labelLen and 0xC0 == 0xC0) { idx += 2; break } // compression pointer
+            if (idx + 1 + labelLen > udpPayload.size) return null
+            if (hostname.isNotEmpty()) hostname.append('.')
+            hostname.append(String(udpPayload, idx + 1, labelLen, Charsets.US_ASCII))
+            idx += 1 + labelLen
+        }
+        idx += 4 // skip QTYPE + QCLASS
+
+        val ips = mutableListOf<String>()
+        for (i in 0 until anCount) {
+            if (idx >= udpPayload.size) break
+            // Skip name field (may be pointer or labels)
+            if (idx + 1 < udpPayload.size && udpPayload[idx].toInt() and 0xC0 == 0xC0) {
+                idx += 2
+            } else {
+                while (idx < udpPayload.size) {
+                    val l = udpPayload[idx].toInt() and 0xFF
+                    if (l == 0) { idx++; break }
+                    if (l and 0xC0 == 0xC0) { idx += 2; break }
+                    idx += 1 + l
+                }
+            }
+            if (idx + 10 > udpPayload.size) break
+            val rType = ((udpPayload[idx].toInt() and 0xFF) shl 8) or (udpPayload[idx + 1].toInt() and 0xFF)
+            val rdLength = ((udpPayload[idx + 8].toInt() and 0xFF) shl 8) or (udpPayload[idx + 9].toInt() and 0xFF)
+            idx += 10
+            if (idx + rdLength > udpPayload.size) break
+            if (rType == 1 && rdLength == 4) { // A record
+                ips.add("${udpPayload[idx].toInt() and 0xFF}.${udpPayload[idx + 1].toInt() and 0xFF}.${udpPayload[idx + 2].toInt() and 0xFF}.${udpPayload[idx + 3].toInt() and 0xFF}")
+            }
+            idx += rdLength
+        }
+
+        val host = hostname.toString()
+        return if (host.isNotBlank() && host.contains('.') && ips.isNotEmpty()) Pair(host, ips) else null
+    }
 }
 
 object UrlExtractor {
 
     private val directUrlRegex = Regex("https?://[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]+")
+
+    // Streaming media file extensions
+    private val streamingMediaRegex = Regex(
+        """https?://[^\s"'<>\x00-\x1F]+\.(m3u8|m3u|mpd|ts|m4s|mp4|mp3|aac|flv|m4a|m4v|webm|f4v|f4m|mov|avi|mkv|ismv|isma|key|vtt|srt)(\?[^\s"'<>\x00-\x1F]*)?""",
+        RegexOption.IGNORE_CASE
+    )
 
     // Known noise patterns to exclude (analytics, ads, telemetry, OS services)
     private val noisePatterns = listOf(
@@ -64,7 +124,8 @@ object UrlExtractor {
     )
 
     /**
-     * Extract ALL URLs from TCP payload — captures every http/https URL found.
+     * Extract ALL URLs from outbound TCP payload (app → server).
+     * Handles HTTP request URLs, TLS SNI hostnames, and direct URL patterns.
      */
     fun extractUrls(payload: ByteArray): List<String> {
         if (payload.isEmpty()) return emptyList()
@@ -74,7 +135,7 @@ object UrlExtractor {
 
         // 1. All direct http/https URLs in payload
         directUrlRegex.findAll(text).forEach {
-            val url = it.value.trim()
+            val url = cleanUrl(it.value)
             if (!isNoise(url)) results.add(url)
         }
 
@@ -91,6 +152,196 @@ object UrlExtractor {
         }
 
         return results.toList()
+    }
+
+    /**
+     * Extract URLs from server response data (server → app) on non-TLS connections.
+     * Parses HTTP response headers, M3U8/HLS playlists, JSON values, and direct URLs.
+     * @param host optional hostname for resolving relative URLs
+     */
+    fun extractResponseUrls(payload: ByteArray, host: String?): List<String> {
+        if (payload.isEmpty()) return emptyList()
+
+        val text = payload.toString(Charsets.ISO_8859_1)
+        val results = LinkedHashSet<String>()
+
+        // 1. All direct http/https URLs in payload
+        directUrlRegex.findAll(text).forEach {
+            val url = cleanUrl(it.value)
+            if (!isNoise(url)) results.add(url)
+        }
+
+        // 2. Streaming media URLs (with known extensions)
+        streamingMediaRegex.findAll(text).forEach {
+            val url = cleanUrl(it.value)
+            if (!isNoise(url)) results.add(url)
+        }
+
+        // 3. HTTP redirect Location header
+        extractHeader(text, "Location")?.let { loc ->
+            val resolved = resolveUrl(loc.trim(), host)
+            if (resolved != null && !isNoise(resolved)) results.add(resolved)
+        }
+
+        // 4. Content-Location header
+        extractHeader(text, "Content-Location")?.let { loc ->
+            val resolved = resolveUrl(loc.trim(), host)
+            if (resolved != null && !isNoise(resolved)) results.add(resolved)
+        }
+
+        // 5. M3U8/HLS playlist lines
+        if (text.contains("#EXTM3U") || text.contains("#EXTINF") || text.contains("#EXT-X-")) {
+            extractM3u8Urls(text, host).forEach {
+                if (!isNoise(it)) results.add(it)
+            }
+        }
+
+        // 6. MPD/DASH manifest URLs
+        if (text.contains("<MPD") || text.contains("<BaseURL>") || text.contains("<SegmentTemplate")) {
+            extractMpdUrls(text, host).forEach {
+                if (!isNoise(it)) results.add(it)
+            }
+        }
+
+        // 7. JSON string values that look like URLs (for API responses)
+        extractJsonUrls(text).forEach {
+            if (!isNoise(it)) results.add(it)
+        }
+
+        // 8. Full URL from HTTP response status + request context
+        extractHttpResponseUrl(text, host)?.let {
+            if (!isNoise(it)) results.add(it)
+        }
+
+        return results.toList()
+    }
+
+    /**
+     * Extract Host header value from an HTTP request payload.
+     */
+    fun extractHttpHost(payload: ByteArray): String? {
+        if (payload.isEmpty()) return null
+        val text = payload.toString(Charsets.ISO_8859_1)
+        return extractHeader(text, "Host")?.trim()
+    }
+
+    // ── M3U8/HLS playlist parsing ────────────────────────────────────────────
+
+    private fun extractM3u8Urls(text: String, host: String?): List<String> {
+        val urls = mutableListOf<String>()
+        for (line in text.lines()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) continue
+
+            // Extract URI= from EXT tags (e.g., #EXT-X-MAP:URI="init.mp4")
+            if (trimmed.startsWith("#")) {
+                val uriMatch = Regex("""URI="([^"]+)"""").find(trimmed)
+                if (uriMatch != null) {
+                    resolveUrl(uriMatch.groupValues[1], host)?.let { urls.add(it) }
+                }
+                // #EXT-X-STREAM-INF, #EXT-X-MEDIA can have URLs on the next line
+                continue
+            }
+
+            // Non-comment, non-empty lines are media segment URLs
+            resolveUrl(trimmed, host)?.let { urls.add(it) }
+        }
+        return urls
+    }
+
+    // ── MPD/DASH manifest parsing ────────────────────────────────────────────
+
+    private fun extractMpdUrls(text: String, host: String?): List<String> {
+        val urls = mutableListOf<String>()
+        // Extract BaseURL content
+        Regex("""<BaseURL[^>]*>([^<]+)</BaseURL>""", RegexOption.IGNORE_CASE).findAll(text).forEach {
+            resolveUrl(it.groupValues[1].trim(), host)?.let { u -> urls.add(u) }
+        }
+        // Extract media/init attributes from SegmentTemplate
+        Regex("""(?:media|initialization|init)\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE).findAll(text).forEach {
+            val v = it.groupValues[1].trim()
+            if (v.contains("/") || v.contains(".")) {
+                resolveUrl(v, host)?.let { u -> urls.add(u) }
+            }
+        }
+        return urls
+    }
+
+    // ── JSON URL extraction ──────────────────────────────────────────────────
+
+    private fun extractJsonUrls(text: String): List<String> {
+        val urls = mutableListOf<String>()
+        // Match JSON string values containing URLs: "key": "https://..."
+        Regex(""""[^"]*":\s*"(https?://[^"]+)"""").findAll(text).forEach {
+            val url = cleanUrl(it.groupValues[1])
+            // Unescape JSON forward slashes
+            val unescaped = url.replace("\\/", "/")
+            if (looksLikeStreamingUrl(unescaped)) urls.add(unescaped)
+        }
+        // Also match URLs in JSON arrays: ["https://..."]
+        Regex("""\[\s*"(https?://[^"]+)""").findAll(text).forEach {
+            val url = cleanUrl(it.groupValues[1]).replace("\\/", "/")
+            if (looksLikeStreamingUrl(url)) urls.add(url)
+        }
+        return urls
+    }
+
+    // ── HTTP response parsing ────────────────────────────────────────────────
+
+    private fun extractHttpResponseUrl(text: String, host: String?): String? {
+        // Detect HTTP response with redirect or content URL
+        val firstLine = text.lineSequence().firstOrNull()?.trim() ?: return null
+        if (!firstLine.startsWith("HTTP/")) return null
+        // For 301/302/307/308 redirects, Location header is already extracted above
+        return null
+    }
+
+    // ── Helper methods ───────────────────────────────────────────────────────
+
+    private fun extractHeader(text: String, name: String): String? {
+        val match = Regex("(?im)^${Regex.escape(name)}:\\s*([^\r\n]+)").find(text)
+        return match?.groupValues?.get(1)
+    }
+
+    /**
+     * Resolve a potentially relative URL to an absolute URL.
+     */
+    fun resolveUrl(relative: String, host: String?): String? {
+        val trimmed = relative.trim()
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) return cleanUrl(trimmed)
+        if (host.isNullOrBlank()) return null
+        val cleanHost = host.replace(Regex(":(80|443)$"), "")
+        // Determine scheme: assume https unless host explicitly uses port 80
+        val scheme = if (host.endsWith(":80")) "http" else "https"
+        return if (trimmed.startsWith("/")) {
+            cleanUrl("$scheme://$cleanHost$trimmed")
+        } else {
+            cleanUrl("$scheme://$cleanHost/$trimmed")
+        }
+    }
+
+    /** Does the URL look like a streaming/media URL? */
+    private fun looksLikeStreamingUrl(url: String): Boolean {
+        val lower = url.lowercase()
+        val mediaExts = listOf(
+            ".m3u8", ".m3u", ".mpd", ".ts", ".m4s", ".mp4", ".mp3", ".aac",
+            ".flv", ".m4a", ".m4v", ".webm", ".f4v", ".f4m", ".mov", ".avi",
+            ".mkv", ".ismv", ".isma", ".key", ".vtt", ".srt", ".wav", ".ogg"
+        )
+        val mediaKeywords = listOf(
+            "/video/", "/audio/", "/stream", "/live/", "/hls/", "/dash/",
+            "/media/", "/content/", "/play/", "/vod/", "/manifest",
+            "playlist", "master.m3u8", "index.m3u8", "chunklist",
+            "/seg-", "/segment", "/chunk-", "/frag-", "/init-",
+            "videoplayback", "googlevideo.com", ".akamaized.net",
+            ".cloudfront.net", ".cdn.", "cdn-", "-cdn."
+        )
+        return mediaExts.any { lower.endsWith(it) || lower.contains("$it?") || lower.contains("$it&") }
+                || mediaKeywords.any { lower.contains(it) }
+    }
+
+    private fun cleanUrl(url: String): String {
+        return url.trim().trimEnd(')', ']', '}', '>', '"', '\'', ',', ';')
     }
 
     private fun isNoise(url: String): Boolean {

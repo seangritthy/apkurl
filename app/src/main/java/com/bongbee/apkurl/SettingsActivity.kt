@@ -5,16 +5,24 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
 
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     private var isKhmer = false
+
+    private lateinit var checkUpdatesBtn: MaterialButton
+    private lateinit var updateStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,6 +32,9 @@ class SettingsActivity : AppCompatActivity() {
 
         val toolbar = findViewById<MaterialToolbar>(R.id.settingsToolbar)
         toolbar.setNavigationOnClickListener { finish() }
+
+        checkUpdatesBtn = findViewById(R.id.settingsCheckUpdatesBtn)
+        updateStatusText = findViewById(R.id.settingsUpdateStatus)
 
         // ── Language toggle ──
         val toggleGroup = findViewById<MaterialButtonToggleGroup>(R.id.langToggleGroup)
@@ -52,11 +63,8 @@ class SettingsActivity : AppCompatActivity() {
             versionText.text = getString(R.string.overlay_version_placeholder)
         }
 
-        // ── Check for updates ──
-        findViewById<MaterialButton>(R.id.settingsCheckUpdatesBtn).setOnClickListener {
-            val url = "https://github.com/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}/releases/latest"
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        }
+        // ── Check for updates (in-app) ──
+        checkUpdatesBtn.setOnClickListener { runUpdateCheck() }
 
         // ── View on GitHub ──
         findViewById<MaterialButton>(R.id.settingsGithubBtn).setOnClickListener {
@@ -65,6 +73,83 @@ class SettingsActivity : AppCompatActivity() {
         }
 
         applyLanguage()
+    }
+
+    // ── In-app update check ─────────────────────────────────────────────────
+
+    private fun setStatus(text: String) {
+        updateStatusText.text = text
+        updateStatusText.visibility = View.VISIBLE
+    }
+
+    private fun runUpdateCheck() {
+        lifecycleScope.launch {
+            setStatus(getString(R.string.status_checking_updates))
+            checkUpdatesBtn.isEnabled = false
+
+            val updateInfo = UpdateChecker.checkForUpdates()
+            if (updateInfo == null) {
+                setStatus(getString(R.string.status_update_check_failed))
+                Toast.makeText(this@SettingsActivity, R.string.status_update_check_failed, Toast.LENGTH_SHORT).show()
+                checkUpdatesBtn.isEnabled = true
+                return@launch
+            }
+
+            val hasUpdate = UpdateChecker.isUpdateAvailable(this@SettingsActivity, updateInfo.versionTag)
+            if (hasUpdate) {
+                setStatus(getString(R.string.status_update_available, updateInfo.versionTag))
+                showInAppUpdateDialog(updateInfo)
+            } else {
+                setStatus(getString(R.string.status_already_latest))
+                Toast.makeText(this@SettingsActivity, R.string.status_already_latest, Toast.LENGTH_SHORT).show()
+            }
+
+            checkUpdatesBtn.isEnabled = true
+        }
+    }
+
+    private fun showInAppUpdateDialog(updateInfo: UpdateChecker.UpdateInfo) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_available_title)
+            .setMessage(getString(R.string.update_available_message, updateInfo.versionTag, updateInfo.releaseNotes))
+            .setNegativeButton(R.string.update_later, null)
+            .setPositiveButton(R.string.install_update_now) { _, _ ->
+                lifecycleScope.launch {
+                    setStatus(getString(R.string.status_downloading_update))
+                    checkUpdatesBtn.isEnabled = false
+
+                    val apkFile = UpdateChecker.downloadUpdateApk(this@SettingsActivity, updateInfo) { downloaded, total ->
+                        val pct = if (total > 0) (downloaded * 100 / total) else -1L
+                        runOnUiThread {
+                            setStatus(
+                                if (pct >= 0)
+                                    getString(R.string.status_downloading_progress, pct)
+                                else
+                                    getString(R.string.status_downloading_update)
+                            )
+                        }
+                    }
+
+                    if (apkFile == null) {
+                        setStatus(getString(R.string.status_download_failed))
+                        Toast.makeText(this@SettingsActivity, R.string.status_download_failed, Toast.LENGTH_SHORT).show()
+                        checkUpdatesBtn.isEnabled = true
+                        return@launch
+                    }
+
+                    setStatus(getString(R.string.status_installing_update))
+                    val launched = UpdateChecker.launchInAppInstaller(this@SettingsActivity, apkFile)
+                    setStatus(
+                        if (launched) getString(R.string.status_install_prompt_opened)
+                        else getString(R.string.status_install_prompt_failed)
+                    )
+                    if (!launched) {
+                        Toast.makeText(this@SettingsActivity, R.string.status_install_prompt_failed, Toast.LENGTH_SHORT).show()
+                    }
+                    checkUpdatesBtn.isEnabled = true
+                }
+            }
+            .show()
     }
 
     private fun applyLanguage() {

@@ -22,8 +22,8 @@ android {
         applicationId = "com.bongbee.apkurl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.6.1"
+        versionCode = 16
+        versionName = "1.7.0"
         buildConfigField("String", "GITHUB_OWNER", "\"seangritthy\"")
         buildConfigField("String", "GITHUB_REPO", "\"apkurl\"")
 
