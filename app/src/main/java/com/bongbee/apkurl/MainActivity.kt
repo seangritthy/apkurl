@@ -1,6 +1,7 @@
 package com.bongbee.apkurl
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.graphics.drawable.Drawable
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -31,6 +33,8 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -42,6 +46,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logsText: TextView
 
     private var pendingPackageForStart: String? = null
+    private var pendingPickFromScreen: Boolean = false
 
     private val logReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -64,6 +69,7 @@ class MainActivity : AppCompatActivity() {
         logsText = findViewById(R.id.logsText)
 
         findViewById<View>(R.id.pickAppButton).setOnClickListener { showAppPicker() }
+        findViewById<View>(R.id.pickFromScreenButton).setOnClickListener { pickFromScreen() }
         findViewById<View>(R.id.launchAppButton).setOnClickListener { launchSelectedApp() }
         findViewById<View>(R.id.startCaptureButton).setOnClickListener { requestVpnAndStart() }
         findViewById<View>(R.id.stopCaptureButton).setOnClickListener { stopCapture() }
@@ -87,6 +93,14 @@ class MainActivity : AppCompatActivity() {
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(logReceiver, filter)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pendingPickFromScreen && hasUsageAccessPermission()) {
+            pendingPickFromScreen = false
+            resolveAndSelectForegroundApp()
         }
     }
 
@@ -142,15 +156,117 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun pickFromScreen() {
+        if (!hasUsageAccessPermission()) {
+            pendingPickFromScreen = true
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.pick_from_screen_title)
+                .setMessage(R.string.pick_from_screen_permission_message)
+                .setNegativeButton(android.R.string.cancel) { _, _ -> pendingPickFromScreen = false }
+                .setPositiveButton(R.string.open_usage_access_settings) { _, _ ->
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                }
+                .show()
+            return
+        }
+        resolveAndSelectForegroundApp()
+    }
+
+    private fun resolveAndSelectForegroundApp() {
+        lifecycleScope.launch {
+            statusText.text = getString(R.string.status_detecting_foreground_app)
+            val packageName = withContext(Dispatchers.Default) { findRecentForegroundPackage() }
+            if (packageName.isNullOrBlank()) {
+                statusText.text = getString(R.string.status_idle)
+                Toast.makeText(this@MainActivity, R.string.foreground_app_not_found, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val appItem = withContext(Dispatchers.Default) { buildAppItem(packageName) }
+            if (appItem == null) {
+                statusText.text = getString(R.string.status_idle)
+                Toast.makeText(this@MainActivity, R.string.foreground_app_not_launchable, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            prefs.edit().putString(KEY_SELECTED_PACKAGE, appItem.packageName).apply()
+            updateSelectedAppLabel()
+            statusText.text = getString(R.string.status_app_selected, appItem.label)
+            Toast.makeText(this@MainActivity, getString(R.string.selected_from_screen, appItem.label), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun hasUsageAccessPermission(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun findRecentForegroundPackage(): String? {
+        val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        val end = System.currentTimeMillis()
+        val start = end - FOREGROUND_LOOKBACK_MS
+        val events = usageStatsManager.queryEvents(start, end)
+        val event = UsageEvents.Event()
+
+        var latestPackage: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            if (event.packageName == packageName) continue
+            if (isForegroundEvent(event.eventType) && !isLikelyHomePackage(event.packageName)) {
+                latestPackage = event.packageName
+            }
+        }
+        return latestPackage
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isForegroundEvent(type: Int): Boolean {
+        return type == UsageEvents.Event.MOVE_TO_FOREGROUND ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && type == UsageEvents.Event.ACTIVITY_RESUMED)
+    }
+
+    private fun isLikelyHomePackage(candidatePackage: String): Boolean {
+        val homeIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val homeResolve = packageManager.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        return candidatePackage == homeResolve?.activityInfo?.packageName
+    }
+
     private fun loadAllApps(): List<AppItem> {
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val activities = packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL)
+        val activities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launchIntent,
+                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_ALL.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launchIntent, PackageManager.MATCH_ALL)
+        }
 
         return activities
-            .map { it.activityInfo.packageName }
-            .distinct()
-            .mapNotNull { buildAppItem(it) }
+            .asSequence()
+            .mapNotNull { info ->
+                val packageName = info.activityInfo?.packageName ?: return@mapNotNull null
+                if (packageName == this.packageName) return@mapNotNull null
+                val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                val safeLabel = if (label.isNotBlank()) label else fallbackNameFromPackage(packageName)
+                val icon: Drawable? = try {
+                    info.loadIcon(packageManager) ?: packageManager.getApplicationIcon(packageName)
+                } catch (_: Exception) {
+                    null
+                }
+                AppItem(safeLabel, packageName, icon)
+            }
+            .distinctBy { it.packageName }
             .sortedBy { it.label.lowercase(Locale.getDefault()) }
+            .toList()
     }
 
     inner class AppPickerAdapter(
@@ -192,7 +308,7 @@ class MainActivity : AppCompatActivity() {
             prefs.edit().remove(KEY_SELECTED_PACKAGE).apply(); updateSelectedAppLabel()
             Toast.makeText(this, R.string.pick_app_first, Toast.LENGTH_SHORT).show(); return
         }
-        packageManager.getLaunchIntentForPackage(packageName)
+        getLaunchIntentForPackageSafe(packageName)
             ?.let { startActivity(it) }
             ?: Toast.makeText(this, R.string.cannot_launch_app, Toast.LENGTH_SHORT).show()
     }
@@ -289,11 +405,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun isRealLaunchableApp(packageName: String): Boolean {
         if (packageName == this.packageName) return false
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        val launchIntent = getLaunchIntentForPackageSafe(packageName) ?: return false
         return try {
             val appInfo = packageManager.getApplicationInfo(packageName, 0)
             appInfo.enabled && launchIntent.component != null
         } catch (_: PackageManager.NameNotFoundException) { false }
+    }
+
+    private fun getLaunchIntentForPackageSafe(packageName: String): Intent? {
+        packageManager.getLaunchIntentForPackage(packageName)?.let { return it }
+
+        val launcherIntent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setPackage(packageName)
+
+        val matches = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launcherIntent,
+                PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        }
+
+        val resolved = matches.firstOrNull()?.activityInfo ?: return null
+        return Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_LAUNCHER)
+            .setClassName(resolved.packageName, resolved.name)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     private fun looksLikePackageName(text: String) = text.contains('.') && text.none { it == ' ' }
@@ -335,5 +475,6 @@ class MainActivity : AppCompatActivity() {
         private const val KEY_SELECTED_PACKAGE = "selected_package"
         private const val REQUEST_VPN_PERMISSION = 1001
         private const val REQUEST_NOTIFICATION_PERMISSION = 1002
+        private const val FOREGROUND_LOOKBACK_MS = 20_000L
     }
 }

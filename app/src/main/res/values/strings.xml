@@ -2,6 +2,7 @@
     <string name="app_name">APK URL Extractor</string>
     <string name="pick_app">Pick app to monitor</string>
     <string name="pick_app_short">Choose</string>
+    <string name="pick_from_screen_short">From screen</string>
     <string name="launch_selected_app">Open selected app</string>
     <string name="start_capture">Start capture</string>
     <string name="stop_capture">Stop capture</string>
@@ -22,8 +23,15 @@
     <string name="status_already_latest">Already on latest version</string>
     <string name="no_logs">No URLs captured yet.</string>
     <string name="pick_app_title">Choose target app</string>
+    <string name="pick_from_screen_title">Pick from phone screen</string>
+    <string name="pick_from_screen_permission_message">To detect the app currently on your screen, allow Usage Access for APK URL Extractor in the next settings page. Open your target app first, then return and tap From screen again if needed.</string>
+    <string name="open_usage_access_settings">Open usage access settings</string>
     <string name="no_apps_found">No launchable apps found.</string>
     <string name="loading_apps">Loading apps…</string>
+    <string name="status_detecting_foreground_app">Detecting app on screen…</string>
+    <string name="foreground_app_not_found">Couldn’t detect an app from your screen. Open it, then try again.</string>
+    <string name="foreground_app_not_launchable">Detected app cannot be selected. Try the Choose button.</string>
+    <string name="selected_from_screen">Selected from screen: %1$s</string>
     <string name="pick_app_first">Pick an app first.</string>
     <string name="cannot_launch_app">Cannot open selected app.</string>
     <string name="notification_title">URL capture is running</string>
