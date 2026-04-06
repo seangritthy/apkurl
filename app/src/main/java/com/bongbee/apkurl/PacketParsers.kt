@@ -123,6 +123,48 @@ object UrlExtractor {
         "play.googleapis.com", "android.clients.google.com"
     )
 
+    // ── TLS record detection ─────────────────────────────────────────────────
+
+    /**
+     * Returns true if the payload starts with a TLS record header.
+     * TLS types: 0x14=ChangeCipherSpec, 0x15=Alert, 0x16=Handshake, 0x17=ApplicationData
+     * Followed by version 0x03 0x00-0x04.
+     * Running URL regex on encrypted TLS data produces garbage like "https://H".
+     */
+    private fun isTlsRecord(payload: ByteArray): Boolean {
+        if (payload.size < 5) return false
+        val contentType = payload[0].toInt() and 0xFF
+        if (contentType !in 0x14..0x17) return false
+        val major = payload[1].toInt() and 0xFF
+        val minor = payload[2].toInt() and 0xFF
+        return major == 0x03 && minor in 0x00..0x04
+    }
+
+    // ── URL domain validation ────────────────────────────────────────────────
+
+    /**
+     * Validates that a URL has a plausible domain — rejects garbage like "https://H".
+     * Domain must contain at least one dot, TLD ≥ 2 chars, labels ≤ 63 chars, no
+     * control characters, and only standard hostname characters.
+     */
+    private fun hasValidDomain(url: String): Boolean {
+        val withoutScheme = url.removePrefix("https://").removePrefix("http://")
+        val authority = withoutScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+        val hostPart = authority.substringBefore(':') // strip port
+        if (!hostPart.contains('.')) return false
+        val labels = hostPart.split('.')
+        if (labels.size < 2) return false
+        val tld = labels.last()
+        if (tld.length < 2 || tld.isEmpty()) return false
+        for (label in labels) {
+            if (label.isEmpty() || label.length > 63) return false
+            if (label.any { c ->
+                    c !in 'a'..'z' && c !in 'A'..'Z' && c !in '0'..'9' && c != '-'
+                }) return false
+        }
+        return true
+    }
+
     /**
      * Extract ALL URLs from outbound TCP payload (app → server).
      * Handles HTTP request URLs, TLS SNI hostnames, and direct URL patterns.
@@ -130,25 +172,29 @@ object UrlExtractor {
     fun extractUrls(payload: ByteArray): List<String> {
         if (payload.isEmpty()) return emptyList()
 
-        val text = payload.toString(Charsets.ISO_8859_1)
         val results = LinkedHashSet<String>()
 
-        // 1. All direct http/https URLs in payload
-        directUrlRegex.findAll(text).forEach {
-            val url = cleanUrl(it.value)
-            if (!isNoise(url)) results.add(url)
-        }
-
-        // 2. Reconstruct full URL from HTTP request line + Host header
-        val requestUrl = buildHttpRequestUrl(text)
-        if (requestUrl != null && !isNoise(requestUrl)) {
-            results.add(requestUrl)
-        }
-
-        // 3. TLS SNI — capture ALL HTTPS hostnames (not just "stream" ones)
+        // 1. TLS SNI — always try, even on TLS records (SNI is in plaintext handshake)
         val tlsSniHost = parseTlsClientHelloSni(payload)
         if (!tlsSniHost.isNullOrBlank() && !isNoiseHost(tlsSniHost)) {
             results.add("https://$tlsSniHost")
+        }
+
+        // 2. Skip regex-based scanning on TLS records (encrypted = random garbage matches)
+        if (isTlsRecord(payload)) return results.toList()
+
+        val text = payload.toString(Charsets.ISO_8859_1)
+
+        // 3. All direct http/https URLs in payload
+        directUrlRegex.findAll(text).forEach {
+            val url = cleanUrl(it.value)
+            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
+        }
+
+        // 4. Reconstruct full URL from HTTP request line + Host header
+        val requestUrl = buildHttpRequestUrl(text)
+        if (requestUrl != null && hasValidDomain(requestUrl) && !isNoise(requestUrl)) {
+            results.add(requestUrl)
         }
 
         return results.toList()
@@ -162,55 +208,54 @@ object UrlExtractor {
     fun extractResponseUrls(payload: ByteArray, host: String?): List<String> {
         if (payload.isEmpty()) return emptyList()
 
+        // Skip if this looks like TLS data (shouldn't happen since caller checks isTls,
+        // but guard against edge cases / binary-heavy non-TLS responses)
+        if (isTlsRecord(payload)) return emptyList()
+
         val text = payload.toString(Charsets.ISO_8859_1)
         val results = LinkedHashSet<String>()
 
         // 1. All direct http/https URLs in payload
         directUrlRegex.findAll(text).forEach {
             val url = cleanUrl(it.value)
-            if (!isNoise(url)) results.add(url)
+            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
         }
 
         // 2. Streaming media URLs (with known extensions)
         streamingMediaRegex.findAll(text).forEach {
             val url = cleanUrl(it.value)
-            if (!isNoise(url)) results.add(url)
+            if (hasValidDomain(url) && !isNoise(url)) results.add(url)
         }
 
         // 3. HTTP redirect Location header
         extractHeader(text, "Location")?.let { loc ->
             val resolved = resolveUrl(loc.trim(), host)
-            if (resolved != null && !isNoise(resolved)) results.add(resolved)
+            if (resolved != null && hasValidDomain(resolved) && !isNoise(resolved)) results.add(resolved)
         }
 
         // 4. Content-Location header
         extractHeader(text, "Content-Location")?.let { loc ->
             val resolved = resolveUrl(loc.trim(), host)
-            if (resolved != null && !isNoise(resolved)) results.add(resolved)
+            if (resolved != null && hasValidDomain(resolved) && !isNoise(resolved)) results.add(resolved)
         }
 
         // 5. M3U8/HLS playlist lines
         if (text.contains("#EXTM3U") || text.contains("#EXTINF") || text.contains("#EXT-X-")) {
             extractM3u8Urls(text, host).forEach {
-                if (!isNoise(it)) results.add(it)
+                if (hasValidDomain(it) && !isNoise(it)) results.add(it)
             }
         }
 
         // 6. MPD/DASH manifest URLs
         if (text.contains("<MPD") || text.contains("<BaseURL>") || text.contains("<SegmentTemplate")) {
             extractMpdUrls(text, host).forEach {
-                if (!isNoise(it)) results.add(it)
+                if (hasValidDomain(it) && !isNoise(it)) results.add(it)
             }
         }
 
         // 7. JSON string values that look like URLs (for API responses)
         extractJsonUrls(text).forEach {
-            if (!isNoise(it)) results.add(it)
-        }
-
-        // 8. Full URL from HTTP response status + request context
-        extractHttpResponseUrl(text, host)?.let {
-            if (!isNoise(it)) results.add(it)
+            if (hasValidDomain(it) && !isNoise(it)) results.add(it)
         }
 
         return results.toList()
@@ -286,15 +331,6 @@ object UrlExtractor {
         return urls
     }
 
-    // ── HTTP response parsing ────────────────────────────────────────────────
-
-    private fun extractHttpResponseUrl(text: String, host: String?): String? {
-        // Detect HTTP response with redirect or content URL
-        val firstLine = text.lineSequence().firstOrNull()?.trim() ?: return null
-        if (!firstLine.startsWith("HTTP/")) return null
-        // For 301/302/307/308 redirects, Location header is already extracted above
-        return null
-    }
 
     // ── Helper methods ───────────────────────────────────────────────────────
 
