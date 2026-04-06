@@ -21,8 +21,8 @@ android {
         applicationId = "com.bongbee.apkurl"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.1.2"
+        versionCode = 5
+        versionName = "1.1.3"
         buildConfigField("String", "GITHUB_OWNER", "\"seangritthy\"")
         buildConfigField("String", "GITHUB_REPO", "\"apkurl\"")
 
@@ -31,10 +31,10 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file(keystoreProps.getProperty("STORE_FILE") ?: "indra.jks")
-            storePassword = keystoreProps.getProperty("STORE_PASSWORD") ?: ""
-            keyAlias = keystoreProps.getProperty("KEY_ALIAS") ?: ""
-            keyPassword = keystoreProps.getProperty("KEY_PASSWORD") ?: ""
+            storeFile = file(System.getenv("STORE_FILE") ?: keystoreProps.getProperty("STORE_FILE") ?: "indra.jks")
+            storePassword = System.getenv("STORE_PASSWORD") ?: keystoreProps.getProperty("STORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("KEY_ALIAS") ?: keystoreProps.getProperty("KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: keystoreProps.getProperty("KEY_PASSWORD") ?: ""
         }
     }
 
