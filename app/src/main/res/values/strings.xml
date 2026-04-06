@@ -57,4 +57,34 @@
     <string name="overlay_stop">Stop</string>
     <string name="show_overlay">Overlay</string>
     <string name="overlay_permission_needed">Allow overlay permission to show floating window</string>
+
+    <!-- Overlay premium UI -->
+    <string name="overlay_version_placeholder">v1.0.0</string>
+    <string name="overlay_version_format">v%1$s  ·  build %2$d</string>
+    <string name="overlay_device_label">DEVICE</string>
+    <string name="overlay_device_placeholder">Loading…</string>
+    <string name="overlay_android_label">ANDROID</string>
+    <string name="overlay_android_placeholder">Loading…</string>
+    <string name="overlay_android_format">Android %1$s  (API %2$d)</string>
+    <string name="overlay_status_idle">Idle — tap Start to capture</string>
+    <string name="overlay_status_capturing">Capturing traffic…</string>
+    <string name="overlay_status_stopped">Capture stopped</string>
+    <string name="overlay_log_label">CAPTURED URLS</string>
+    <string name="overlay_footer">BONGBEE  ·  APK URL EXTRACTOR</string>
+    <string name="overlay_lang_en">🌐 EN</string>
+    <string name="overlay_lang_kh">🌐 ខ្មែរ</string>
+
+    <!-- Khmer overlay strings (used in-app when user switches to KH) -->
+    <string name="overlay_title_kh">ចាប់យក URL APK</string>
+    <string name="overlay_start_kh">ចាប់ផ្ដើម</string>
+    <string name="overlay_stop_kh">បញ្ឈប់</string>
+    <string name="overlay_status_idle_kh">រង់ចាំ — ចុច ចាប់ផ្ដើម ដើម្បីចាប់យក</string>
+    <string name="overlay_status_capturing_kh">កំពុងចាប់យកចរាចរ…</string>
+    <string name="overlay_status_stopped_kh">ការចាប់យកត្រូវបានបញ្ឈប់</string>
+    <string name="overlay_log_label_kh">URLs ដែលចាប់បាន</string>
+    <string name="overlay_device_label_kh">ឧបករណ៍</string>
+    <string name="overlay_android_label_kh">អេនដ្រយ៍ដ៍</string>
+    <string name="no_logs_kh">មិនទាន់មាន URL ចាប់យកទេ។</string>
+    <string name="overlay_footer_kh">បងប៊ី  ·  ទាញយក URL APK</string>
+    <string name="clear_logs_kh">សម្អាត</string>
 </resources>

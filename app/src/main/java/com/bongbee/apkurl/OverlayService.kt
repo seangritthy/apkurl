@@ -10,22 +10,25 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
+import android.text.method.ScrollingMovementMethod
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.app.NotificationCompat
-import com.google.android.material.button.MaterialButton
 
 class OverlayService : Service() {
 
     private var windowManager: WindowManager? = null
     private var overlayView: View? = null
     private var isCapturing = false
+    private var isKhmer = false
 
     private val logReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -40,6 +43,11 @@ class OverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIFICATION_ID, buildNotification())
+
+        // Restore language preference
+        val prefs = getSharedPreferences("apkurl_prefs", MODE_PRIVATE)
+        isKhmer = prefs.getBoolean("overlay_lang_kh", false)
+
         createOverlay()
 
         val filter = IntentFilter(CaptureVpnService.ACTION_NEW_RECORD)
@@ -108,11 +116,38 @@ class OverlayService : Service() {
             }
         }
 
-        // Wire buttons
+        // ── Populate version info ──
+        val versionText = overlayView?.findViewById<TextView>(R.id.overlayVersionText)
+        try {
+            val pInfo = packageManager.getPackageInfo(packageName, 0)
+            val versionName = pInfo.versionName ?: "?"
+            val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+                pInfo.longVersionCode.toInt() else @Suppress("DEPRECATION") pInfo.versionCode
+            versionText?.text = getString(R.string.overlay_version_format, versionName, versionCode)
+        } catch (_: Exception) {
+            versionText?.text = getString(R.string.overlay_version_placeholder)
+        }
+
+        // ── Populate device info ──
+        val deviceText = overlayView?.findViewById<TextView>(R.id.overlayDeviceText)
+        deviceText?.text = "${Build.MANUFACTURER.uppercase()} ${Build.MODEL}"
+
+        val androidText = overlayView?.findViewById<TextView>(R.id.overlayAndroidText)
+        androidText?.text = getString(R.string.overlay_android_format, Build.VERSION.RELEASE, Build.VERSION.SDK_INT)
+
+        // ── Wire buttons ──
         val logsText = overlayView?.findViewById<TextView>(R.id.overlayLogsText)
-        val startBtn = overlayView?.findViewById<MaterialButton>(R.id.overlayStartBtn)
-        val stopBtn = overlayView?.findViewById<MaterialButton>(R.id.overlayStopBtn)
-        val closeBtn = overlayView?.findViewById<MaterialButton>(R.id.overlayCloseBtn)
+        val startBtn = overlayView?.findViewById<LinearLayout>(R.id.overlayStartBtn)
+        val stopBtn = overlayView?.findViewById<LinearLayout>(R.id.overlayStopBtn)
+        val closeBtn = overlayView?.findViewById<TextView>(R.id.overlayCloseBtn)
+        val statusText = overlayView?.findViewById<TextView>(R.id.overlayStatusText)
+        val statusDot = overlayView?.findViewById<View>(R.id.overlayStatusDot)
+        val langBtn = overlayView?.findViewById<TextView>(R.id.overlayLangBtn)
+        val clearBtn = overlayView?.findViewById<TextView>(R.id.overlayClearBtn)
+        val logLabel = overlayView?.findViewById<TextView>(R.id.overlayLogLabel)
+
+        // Enable scrolling inside the logs TextView
+        logsText?.movementMethod = ScrollingMovementMethod.getInstance()
 
         startBtn?.setOnClickListener {
             val prefs = getSharedPreferences("apkurl_prefs", MODE_PRIVATE)
@@ -127,23 +162,102 @@ class OverlayService : Service() {
                     startService(captureIntent)
                 }
                 isCapturing = true
+                updateStatusUI()
             }
         }
 
         stopBtn?.setOnClickListener {
             startService(Intent(this, CaptureVpnService::class.java).setAction(CaptureVpnService.ACTION_STOP))
             isCapturing = false
+            updateStatusUI()
         }
 
         closeBtn?.setOnClickListener {
             stopSelf()
         }
 
+        // ── Language toggle ──
+        langBtn?.setOnClickListener {
+            isKhmer = !isKhmer
+            getSharedPreferences("apkurl_prefs", MODE_PRIVATE)
+                .edit().putBoolean("overlay_lang_kh", isKhmer).apply()
+            applyLanguage()
+        }
+
+        // ── Clear logs ──
+        clearBtn?.setOnClickListener {
+            UrlLogStore.clear(this)
+            updateLogs()
+        }
+
+        applyLanguage()
+        updateStatusUI()
         updateLogs()
 
         try {
             windowManager?.addView(overlayView, params)
         } catch (_: Exception) {}
+    }
+
+    private fun applyLanguage() {
+        val langBtn = overlayView?.findViewById<TextView>(R.id.overlayLangBtn)
+        val startLabel = overlayView?.findViewById<TextView>(R.id.overlayStartLabel)
+        val stopLabel = overlayView?.findViewById<TextView>(R.id.overlayStopLabel)
+        val logLabel = overlayView?.findViewById<TextView>(R.id.overlayLogLabel)
+        val clearBtn = overlayView?.findViewById<TextView>(R.id.overlayClearBtn)
+        val deviceLabel = overlayView?.findViewById<TextView>(R.id.overlayDeviceLabel)
+        val androidLabel = overlayView?.findViewById<TextView>(R.id.overlayAndroidLabel)
+
+        if (isKhmer) {
+            langBtn?.text = getString(R.string.overlay_lang_kh)
+            startLabel?.text = getString(R.string.overlay_start_kh)
+            stopLabel?.text = getString(R.string.overlay_stop_kh)
+            logLabel?.text = getString(R.string.overlay_log_label_kh)
+            clearBtn?.text = getString(R.string.clear_logs_kh)
+            deviceLabel?.text = getString(R.string.overlay_device_label_kh)
+            androidLabel?.text = getString(R.string.overlay_android_label_kh)
+        } else {
+            langBtn?.text = getString(R.string.overlay_lang_en)
+            startLabel?.text = getString(R.string.overlay_start)
+            stopLabel?.text = getString(R.string.overlay_stop)
+            logLabel?.text = getString(R.string.overlay_log_label)
+            clearBtn?.text = getString(R.string.clear_logs)
+            deviceLabel?.text = getString(R.string.overlay_device_label)
+            androidLabel?.text = getString(R.string.overlay_android_label)
+        }
+        updateStatusUI()
+        updateLogs()
+    }
+
+    private fun updateStatusUI() {
+        val statusText = overlayView?.findViewById<TextView>(R.id.overlayStatusText) ?: return
+        val statusDot = overlayView?.findViewById<View>(R.id.overlayStatusDot)
+
+        if (isCapturing) {
+            statusText.text = if (isKhmer) getString(R.string.overlay_status_capturing_kh)
+                              else getString(R.string.overlay_status_capturing)
+            statusText.setTextColor(0xCC4CAF50.toInt())
+            // Green dot
+            val dot = GradientDrawable()
+            dot.shape = GradientDrawable.OVAL
+            dot.setColor(0xFF4CAF50.toInt())
+            dot.setSize(dpToPx(6), dpToPx(6))
+            statusDot?.background = dot
+        } else {
+            statusText.text = if (isKhmer) getString(R.string.overlay_status_idle_kh)
+                              else getString(R.string.overlay_status_idle)
+            statusText.setTextColor(0x66BBC7DB)
+            // Grey dot
+            val dot = GradientDrawable()
+            dot.shape = GradientDrawable.OVAL
+            dot.setColor(0x66BBC7DB)
+            dot.setSize(dpToPx(6), dpToPx(6))
+            statusDot?.background = dot
+        }
+    }
+
+    private fun dpToPx(dp: Int): Int {
+        return (dp * resources.displayMetrics.density).toInt()
     }
 
     private fun removeOverlay() {
@@ -155,7 +269,7 @@ class OverlayService : Service() {
         val logsText = overlayView?.findViewById<TextView>(R.id.overlayLogsText) ?: return
         val rows = UrlLogStore.readAll(this)
         if (rows.isEmpty()) {
-            logsText.text = getString(R.string.no_logs)
+            logsText.text = if (isKhmer) getString(R.string.no_logs_kh) else getString(R.string.no_logs)
             return
         }
         logsText.text = rows.takeLast(10).joinToString("\n") { raw ->
@@ -190,4 +304,3 @@ class OverlayService : Service() {
         private const val NOTIFICATION_ID = 10002
     }
 }
-

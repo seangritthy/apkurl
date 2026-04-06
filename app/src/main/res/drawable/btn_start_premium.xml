@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="#40ADC8FF">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#CC1B6EF3"
+                android:endColor="#CC3B8AF5"
+                android:angle="135" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</ripple>
