@@ -36,6 +36,7 @@ import java.util.Locale
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
 
 class MainActivity : AppCompatActivity() {
 
@@ -49,6 +50,19 @@ class MainActivity : AppCompatActivity() {
 
     private var pendingPackageForStart: String? = null
     private var pendingPickFromScreen: Boolean = false
+
+    private val exportFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) {
+            val success = UrlLogStore.exportToTxt(this, uri)
+            if (success) {
+                statusText.text = getString(R.string.export_success)
+                Toast.makeText(this, R.string.export_success, Toast.LENGTH_SHORT).show()
+            } else {
+                statusText.text = getString(R.string.export_failed)
+                Toast.makeText(this, R.string.export_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     private val logReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -78,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<View>(R.id.stopCaptureButton).setOnClickListener { stopCapture() }
         findViewById<View>(R.id.overlayButton).setOnClickListener { showOverlay() }
         checkUpdatesButton.setOnClickListener { runUpdateCheck(manual = true) }
+        findViewById<View>(R.id.exportLogButton).setOnClickListener { exportLogs() }
         findViewById<View>(R.id.clearLogButton).setOnClickListener {
             UrlLogStore.clear(this)
             renderLogs()
@@ -436,6 +451,16 @@ class MainActivity : AppCompatActivity() {
     private fun stopCapture() {
         startService(Intent(this, CaptureVpnService::class.java).setAction(CaptureVpnService.ACTION_STOP))
         statusText.text = getString(R.string.status_capture_stopped)
+    }
+
+    private fun exportLogs() {
+        val rows = UrlLogStore.readAll(this)
+        if (rows.isEmpty()) {
+            Toast.makeText(this, R.string.export_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+        exportFileLauncher.launch("apkurl_${timestamp}.txt")
     }
 
     private fun showOverlay() {

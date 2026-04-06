@@ -207,6 +207,15 @@
                             android:paddingHorizontal="8dp" />
 
                         <com.google.android.material.button.MaterialButton
+                            android:id="@+id/exportLogButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/export_logs"
+                            android:minWidth="0dp"
+                            android:paddingHorizontal="8dp" />
+
+                        <com.google.android.material.button.MaterialButton
                             android:id="@+id/clearLogButton"
                             style="@style/Widget.Material3.Button.TextButton"
                             android:layout_width="wrap_content"

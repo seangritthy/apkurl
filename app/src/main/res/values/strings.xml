@@ -6,7 +6,11 @@
     <string name="launch_selected_app">Open selected app</string>
     <string name="start_capture">Start capture</string>
     <string name="stop_capture">Stop capture</string>
-    <string name="clear_logs">Clear logs</string>
+    <string name="clear_logs">Clear</string>
+    <string name="export_logs">Export</string>
+    <string name="export_success">URLs exported to file</string>
+    <string name="export_failed">Export failed</string>
+    <string name="export_empty">No URLs to export</string>
     <string name="check_updates">Check for updates</string>
     <string name="log_title">Captured URLs</string>
     <string name="selected_app_none">Selected app: none</string>

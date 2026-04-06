@@ -167,6 +167,17 @@ class CaptureVpnService : VpnService() {
         if (payOff + payLen > len || payLen < 0) return
         val data = pkt.copyOfRange(payOff, payOff + payLen)
 
+        // Log DNS queries (port 53) to capture every hostname the app connects to
+        if (dstPort == 53 && payLen > 12) {
+            val host = PacketParsers.extractDnsQueryName(data)
+            if (!host.isNullOrBlank()) {
+                val url = "https://$host"
+                val row = logRow(targetPackage, url)
+                UrlLogStore.append(this, row)
+                sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+            }
+        }
+
         val session = udpSessions.getOrPut(srcPort) {
             val sock = DatagramSocket()
             protect(sock)
