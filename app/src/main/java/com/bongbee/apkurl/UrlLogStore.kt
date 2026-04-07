@@ -8,6 +8,17 @@ import java.util.Date
 import java.util.Locale
 
 object UrlLogStore {
+    /**
+     * Read all log rows for a specific package (or *ALL* for global).
+     */
+    @Synchronized
+    fun readByPackage(context: Context, packageName: String): List<String> {
+        val file = File(context.filesDir, LOG_FILE_NAME)
+        if (!file.exists()) return emptyList()
+        val allLines = file.readLines().filter { it.isNotBlank() }
+        if (packageName == "*ALL*") return allLines
+        return allLines.filter { it.split("|", limit = 3).getOrNull(1) == packageName }
+    }
 
     private const val LOG_FILE_NAME = "captured_urls.log"
 
@@ -30,12 +41,16 @@ object UrlLogStore {
         context.deleteFile(LOG_FILE_NAME)
     }
 
-    /**
-     * Export all captured URLs as a formatted .txt file.
-     * Returns the Uri of the exported file, or null on failure.
-     */
     @Synchronized
     fun exportToTxt(context: Context, uri: Uri): Boolean {
+        return exportToTxtFiltered(context, uri) { true }
+    }
+
+    /**
+     * Export captured URLs as a formatted .txt file with an optional filter.
+     */
+    @Synchronized
+    fun exportToTxtFiltered(context: Context, uri: Uri, filter: (String) -> Boolean): Boolean {
         return try {
             val rows = readAll(context)
             val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
@@ -43,14 +58,20 @@ object UrlLogStore {
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
                 writer.appendLine("=== APK URL Extractor - Captured URLs ===")
                 writer.appendLine("Exported: ${dateFormat.format(Date())}")
-                writer.appendLine("Total URLs: ${rows.size}")
+                
+                val filteredRows = rows.filter { raw ->
+                    val parts = raw.split("|", limit = 3)
+                    if (parts.size >= 3) filter(parts[2]) else false
+                }
+
+                writer.appendLine("Total URLs: ${filteredRows.size}")
                 writer.appendLine("=========================================")
                 writer.appendLine()
 
                 // Collect unique URLs
                 val uniqueUrls = LinkedHashSet<String>()
 
-                for (raw in rows) {
+                for (raw in filteredRows) {
                     val parts = raw.split("|", limit = 3)
                     if (parts.size >= 3) {
                         val timestamp = parts[0].toLongOrNull() ?: 0L
@@ -61,9 +82,6 @@ object UrlLogStore {
                         writer.appendLine(url)
                         writer.appendLine()
                         uniqueUrls.add(url)
-                    } else {
-                        writer.appendLine(raw)
-                        writer.appendLine()
                     }
                 }
 

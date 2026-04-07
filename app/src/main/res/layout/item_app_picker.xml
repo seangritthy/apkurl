@@ -4,28 +4,32 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingHorizontal="20dp"
-    android:paddingVertical="12dp"
+    android:paddingHorizontal="24dp"
+    android:paddingVertical="16dp"
     android:background="?attr/selectableItemBackground">
 
     <ImageView
         android:id="@+id/appIcon"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:scaleType="fitCenter" />
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:scaleType="fitCenter"
+        android:background="@drawable/badge_background"
+        android:padding="4dp" />
 
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:layout_marginStart="14dp">
+        android:layout_marginStart="16dp">
 
         <TextView
             android:id="@+id/appName"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="?attr/textAppearanceBodyLarge"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -34,8 +38,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:alpha="0.6"
+            android:textColor="#66FFFFFF"
+            android:textSize="12sp"
             android:maxLines="1"
             android:ellipsize="end" />
 

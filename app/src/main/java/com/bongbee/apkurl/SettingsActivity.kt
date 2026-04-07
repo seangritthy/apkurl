@@ -21,7 +21,7 @@ class SettingsActivity : AppCompatActivity() {
     private val prefs by lazy { getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
     private var isKhmer = false
 
-    private lateinit var checkUpdatesBtn: MaterialButton
+    private lateinit var checkUpdatesBtn: View
     private lateinit var updateStatusText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,6 +35,7 @@ class SettingsActivity : AppCompatActivity() {
 
         checkUpdatesBtn = findViewById(R.id.settingsCheckUpdatesBtn)
         updateStatusText = findViewById(R.id.settingsUpdateStatus)
+        val githubBtn = findViewById<View>(R.id.settingsGithubBtn)
 
         // ── Language toggle ──
         val toggleGroup = findViewById<MaterialButtonToggleGroup>(R.id.langToggleGroup)
@@ -67,7 +68,7 @@ class SettingsActivity : AppCompatActivity() {
         checkUpdatesBtn.setOnClickListener { runUpdateCheck() }
 
         // ── View on GitHub ──
-        findViewById<MaterialButton>(R.id.settingsGithubBtn).setOnClickListener {
+        githubBtn.setOnClickListener {
             val url = "https://github.com/${BuildConfig.GITHUB_OWNER}/${BuildConfig.GITHUB_REPO}"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }
@@ -158,7 +159,8 @@ class SettingsActivity : AppCompatActivity() {
         val langDesc = findViewById<TextView>(R.id.settingsLangDesc)
         val aboutTitle = findViewById<TextView>(R.id.settingsAboutTitle)
         val appName = findViewById<TextView>(R.id.settingsAppName)
-        val checkUpdatesBtn = findViewById<MaterialButton>(R.id.settingsCheckUpdatesBtn)
+        val checkUpdatesBtnView = findViewById<TextView>(R.id.settingsCheckUpdatesBtn)
+        val githubBtn = findViewById<TextView>(R.id.settingsGithubBtn)
 
         if (isKhmer) {
             toolbar.title = getString(R.string.settings_title_kh)
@@ -166,14 +168,16 @@ class SettingsActivity : AppCompatActivity() {
             langDesc.text = getString(R.string.settings_language_desc_kh)
             aboutTitle.text = getString(R.string.settings_about_kh)
             appName.text = getString(R.string.app_name_kh)
-            checkUpdatesBtn.text = getString(R.string.settings_check_updates_kh)
+            checkUpdatesBtnView.text = getString(R.string.settings_check_updates_kh)
+            githubBtn.text = getString(R.string.settings_github_kh)
         } else {
             toolbar.title = getString(R.string.settings_title)
             langTitle.text = getString(R.string.settings_language)
             langDesc.text = getString(R.string.settings_language_desc)
             aboutTitle.text = getString(R.string.settings_about)
             appName.text = getString(R.string.app_name)
-            checkUpdatesBtn.text = getString(R.string.settings_check_updates)
+            checkUpdatesBtnView.text = getString(R.string.settings_check_updates)
+            githubBtn.text = getString(R.string.settings_github)
         }
     }
 

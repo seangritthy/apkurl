@@ -10,6 +10,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.core.app.NotificationCompat
+import android.util.Log
+import kotlinx.coroutines.*
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramPacket
@@ -46,6 +48,11 @@ class CaptureVpnService : VpnService() {
     /** Global deduplication to avoid logging the same URL repeatedly */
     private val seenUrls = ConcurrentHashMap.newKeySet<String>()
 
+    /** Temporary store for all captured data to identify potential URLs in subsequent packets */
+    private val packetBuffer = ConcurrentHashMap<Int, StringBuilder>()
+
+    private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
@@ -54,11 +61,15 @@ class CaptureVpnService : VpnService() {
                     stopSelf()
                     return START_NOT_STICKY
                 }
+                isServiceRunning = true
+                sendBroadcast(Intent(ACTION_STATUS_CHANGED).setPackage(packageName))
                 startForeground(NOTIFICATION_ID, buildNotification(targetPackage))
                 startCapture(targetPackage)
             }
             ACTION_STOP -> {
                 stopCapture()
+                isServiceRunning = false
+                sendBroadcast(Intent(ACTION_STATUS_CHANGED).setPackage(packageName))
                 stopSelf()
             }
         }
@@ -67,6 +78,8 @@ class CaptureVpnService : VpnService() {
 
     override fun onDestroy() {
         stopCapture()
+        isServiceRunning = false
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -82,12 +95,14 @@ class CaptureVpnService : VpnService() {
             .addDnsServer("8.8.4.4")
             .setMtu(MTU)
 
-        try {
-            builder.addAllowedApplication(targetPackage)
-        } catch (_: PackageManager.NameNotFoundException) {
-            UrlLogStore.append(this, logRow(targetPackage, "Failed: package not found"))
-            stopSelf()
-            return
+        if (targetPackage != "*ALL*") {
+            try {
+                builder.addAllowedApplication(targetPackage)
+            } catch (_: PackageManager.NameNotFoundException) {
+                UrlLogStore.append(this, logRow(targetPackage, "Failed: package not found"))
+                stopSelf()
+                return
+            }
         }
 
         vpnInterface = builder.establish()
@@ -119,6 +134,7 @@ class CaptureVpnService : VpnService() {
 
         ipHostMap.clear()
         seenUrls.clear()
+        packetBuffer.clear()
 
         try { tunOutputStream?.close() } catch (_: Exception) {}
         tunOutputStream = null
@@ -146,24 +162,45 @@ class CaptureVpnService : VpnService() {
                 if (proto == PROTO_TCP) {
                     val payload = PacketParsers.extractTcpPayload(pkt, len)
                     if (payload != null && payload.isNotEmpty()) {
-                        // Detect host and TLS status for session tracking
-                        val sniHost = UrlExtractor.parseTlsClientHelloSni(payload)
-                        val httpHost = if (sniHost == null) UrlExtractor.extractHttpHost(payload) else null
-
                         val ihl = (pkt[0].toInt() and 0x0F) * 4
                         val srcPort = rU16(pkt, ihl)
+                        val session = tcpSessions[srcPort]
+
+                        // Detect host and TLS status for session tracking
+                        val sniHost = UrlExtractor.parseTlsClientHelloSni(payload)
                         if (sniHost != null) {
-                            tcpSessions[srcPort]?.let { it.host = sniHost; it.isTls = true }
-                        } else if (httpHost != null) {
-                            tcpSessions[srcPort]?.let { it.host = httpHost }
+                            session?.let { it.host = sniHost; it.isTls = true }
+                        } else if (session != null && !session.isTls) {
+                            val httpHost = UrlExtractor.extractHttpHost(payload)
+                            if (httpHost != null) session.host = httpHost
                         }
 
-                        for (url in UrlExtractor.extractUrls(payload)) {
+                        // Extract URLs from this packet (handles SNI and HTTP Request lines)
+                        val urls = UrlExtractor.extractUrls(payload)
+                        for (url in urls) {
                             if (seenUrls.add(url)) {
                                 val row = logRow(targetPackage, url)
                                 UrlLogStore.append(this, row)
                                 sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
                             }
+                        }
+
+                        // Also check accumulated buffer for split URLs in non-TLS traffic
+                        if (session?.isTls == false) {
+                            val sb = packetBuffer.getOrPut(srcPort) { StringBuilder() }
+                            sb.append(String(payload, Charsets.ISO_8859_1))
+                            
+                            val currentHost = session.host ?: ipHostMap[InetAddress.getByAddress(pkt.copyOfRange(16, 20)).hostAddress ?: ""]
+                            val allPossibleUrls = UrlExtractor.extractResponseUrls(sb.toString().toByteArray(Charsets.ISO_8859_1), currentHost)
+                            
+                            for (url in allPossibleUrls) {
+                                if (seenUrls.add(url)) {
+                                    val row = logRow(targetPackage, url)
+                                    UrlLogStore.append(this, row)
+                                    sendBroadcast(Intent(ACTION_NEW_RECORD).setPackage(packageName).putExtra(EXTRA_LOG_ROW, row))
+                                }
+                            }
+                            if (sb.length > 50_000) sb.delete(0, 25_000)
                         }
                     }
                 }
@@ -437,6 +474,7 @@ class CaptureVpnService : VpnService() {
         const val ACTION_START = "com.bongbee.apkurl.ACTION_START_CAPTURE"
         const val ACTION_STOP = "com.bongbee.apkurl.ACTION_STOP_CAPTURE"
         const val ACTION_NEW_RECORD = "com.bongbee.apkurl.ACTION_NEW_RECORD"
+        const val ACTION_STATUS_CHANGED = "com.bongbee.apkurl.ACTION_STATUS_CHANGED"
         const val EXTRA_TARGET_PACKAGE = "extra_target_package"
         const val EXTRA_LOG_ROW = "extra_log_row"
         private const val CHANNEL_ID = "apkurl_capture"
@@ -445,5 +483,8 @@ class CaptureVpnService : VpnService() {
         private const val MTU = 1500
         private const val PROTO_TCP = 6
         private const val PROTO_UDP = 17
+
+        @Volatile
+        var isServiceRunning = false
     }
 }

@@ -16,3 +16,5 @@ keystore.properties
 .externalNativeBuild
 .cxx
 local.properties
+/build.ps1
+/release-github.ps1

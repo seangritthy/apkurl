@@ -60,12 +60,21 @@
     <string name="type_m3u8">M3U8</string>
     <string name="type_media">MEDIA</string>
     <string name="type_url">URL</string>
+    <string name="all_apps">All Apps</string>
+    <string name="all_apps_kh">កម្មវិធីទាំងអស់</string>
+    <string name="export_all">Export All</string>
+    <string name="export_all_kh">នាំចេញទាំងអស់</string>
+    <string name="export_m3u8">Export M3U8</string>
+    <string name="export_m3u8_kh">នាំចេញ M3U8</string>
+    <string name="cancel">Cancel</string>
+    <string name="cancel_kh">បោះបង់</string>
 
     <!-- Overlay premium UI -->
     <string name="overlay_version_placeholder">v1.0.0</string>
     <string name="overlay_version_format">v%1$s  ·  build %2$d</string>
     <string name="overlay_device_label">DEVICE</string>
     <string name="overlay_device_placeholder">Loading…</string>
+    <string name="overlay_device_format">%1$s %2$s</string>
     <string name="overlay_android_label">ANDROID</string>
     <string name="overlay_android_placeholder">Loading…</string>
     <string name="overlay_android_format">Android %1$s  (API %2$d)</string>
@@ -117,6 +126,7 @@
     <string name="settings_language_desc_kh">ជ្រើសរើសភាសាកម្មវិធី</string>
     <string name="settings_about_kh">អំពី</string>
     <string name="settings_check_updates_kh">ពិនិត្យបច្ចុប្បន្នភាព</string>
+    <string name="settings_github_kh">មើលលើ GitHub</string>
 
     <!-- Khmer: Overlay strings -->
     <string name="overlay_title_kh">ចាប់យក URL APK</string>
